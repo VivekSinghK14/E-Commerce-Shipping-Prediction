@@ -20,7 +20,7 @@
 
 Data Science (DS) is a discipline that aims to extract knowledge from data. This process often involves the application of Machine Learning (ML). DS teams frequently encounter managerial and technical challenges during project execution. To address these challenges, engineering practices prescribed by the MLOps paradigm are increasingly applied to support the development, deployment, and monitoring of ML models.
 
-The goal of this project is the end-to-end realization—from conceptualization to utilization—of a Data Science use case. The project team is expected to follow a provided MLOps-based DS process model to manage the project lifecycle.
+The goal of this project is the end-to-end realization from conceptualization to utilization of a Data Science use case. The project team is expected to follow a provided MLOps-based DS process model to manage the project lifecycle.
 
 The Data Science problem originates from the e-commerce domain. The corresponding solution should predict whether the delivery of an order will be completed on time based on the available input features.
 
