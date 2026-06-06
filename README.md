@@ -1,10 +1,10 @@
-# Development and Operationalization of Data Science Solutions – E-Commerce Shipping Prediction
+# Development and Operationalization of Data Science Solutions E-Commerce Shipping Prediction
 
 ## Project Information
 
 | Field                                  | Details                                                                                            |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Project Topic**                      | Development and Operationalization of Data Science Solutions – E-Commerce Shipping Prediction      |
+| **Project Topic**                      | Development and Operationalization of Data Science Solutions E-Commerce Shipping Prediction      |
 | **Project Abbreviation**               | -                                                                                                  |
 | **Institute / Chair / Research Group** | Institut für Technische und Betriebliche Informationssysteme                                       |
 | **Advisor(s)**                         | Prof. Dr. Klaus Turowski, M. Sc. Christian Haertel                                                 |
