@@ -1,123 +1,159 @@
-# Development and Operationalization of Data Science Solutions E-Commerce Shipping Prediction
+# E-Commerce-Shipping-Prediction
 
-## Project Information
+Development and Operationalization of Data Science Solutions - E-Commerce Shipping Prediction.
 
-| Field                                  | Details                                                                                            |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Project Topic**                      | Development and Operationalization of Data Science Solutions E-Commerce Shipping Prediction      |
-| **Project Abbreviation**               | -                                                                                                  |
-| **Institute / Chair / Research Group** | Institut für Technische und Betriebliche Informationssysteme                                       |
-| **Advisor(s)**                         | Prof. Dr. Klaus Turowski, M. Sc. Christian Haertel                                                 |
-| **Preferred Group Size**               | 5                                                                                                  |
-| **Desired Project Period**             | 5 Months                                                                                           |
-| **Required / Desired Knowledge**       | Python, Data Analysis, Data Engineering, Machine Learning, Software Engineering, Technical Writing |
-| **External Affiliation Involved**      | No                                                                                                 |
-| **Dataset**                            | https://www.kaggle.com/datasets/yashch05/e-com-shipping-dataset                                    |
+## BPMN stages 3–5 (authoritative workflow)
 
----
+The reproducible workflow from the raw `50K Records.csv` through the evaluation
+checkpoint is:
 
-## Project Description
+```powershell
+python scripts/run_bpmn_pipeline.py
+```
 
-Data Science (DS) is a discipline that aims to extract knowledge from data. This process often involves the application of Machine Learning (ML). DS teams frequently encounter managerial and technical challenges during project execution. To address these challenges, engineering practices prescribed by the MLOps paradigm are increasingly applied to support the development, deployment, and monitoring of ML models.
+For the complete six-stage lifecycle required by the project proposal, use:
 
-The goal of this project is the end-to-end realization from conceptualization to utilization of a Data Science use case. The project team is expected to follow a provided MLOps-based DS process model to manage the project lifecycle.
+```powershell
+python scripts/run_end_to_end_pipeline.py
+```
 
-The Data Science problem originates from the e-commerce domain. The corresponding solution should predict whether the delivery of an order will be completed on time based on the available input features.
+The complete plain-language implementation report is generated at
+`output/pdf/ecommerce_mlops_complete_project_report.pdf` by:
 
----
+```powershell
+python scripts/generate_project_report.py
+```
 
-## Dataset
+Use `--quick` for a faster smoke run. Generated data reports, feature-store
+files, model metadata/registry records, model reports, and the evaluation
+checkpoint are written under `artifacts/`.
 
-**E-Commerce Shipping Dataset**
+The current evidence does **not** satisfy the configured business gates. The
+correct checkpoint is `RETURN_TO_BUSINESS_UNDERSTANDING`; the candidate is not
+promoted. See [the BPMN gap analysis](docs/bpmn_gap_analysis.md) for the exact
+diagram-to-code mapping and explanation.
 
-https://www.kaggle.com/datasets/yashch05/e-com-shipping-dataset
+The older notebooks remain as historical exploration. They contain absolute
+machine-specific paths and reuse the test set for threshold selection, so they
+are not the authoritative reproducible pipeline.
 
----
+### MLflow and generated evidence
 
-## Project Deliverables
+Candidate parameters, metrics, economic values, and serialized models are
+logged to the local MLflow store under `artifacts/mlflow`. Final evaluation and
+business reports are attached to a separate MLflow evaluation run. To inspect
+the runs locally:
 
-### 1. End-to-End Data Science Solution
+```powershell
+mlflow ui --backend-store-uri artifacts/mlflow
+```
 
-* Implementation of a complete Data Science use case based on the provided dataset.
-* Adherence to the provided MLOps-based process model.
+Important generated reports include:
 
-### 2. Documentation
+- `artifacts/reports/cost_benefit_analysis.md`
+- `artifacts/reports/model_business_factors.csv`
+- `artifacts/reports/cost_per_day_ablation.md`
+- `artifacts/reports/business_objective_assessment.md`
+- `artifacts/reports/input_data_contract.json`
+- `artifacts/reports/output_data_contract.json`
 
-* Comprehensive and detailed documentation of the implementation process.
-* Description of all activities performed.
-* Documentation of challenges encountered during project execution.
+### Retraining
 
-### 3. Code Base
+Retraining is versioned and guarded by the same data, model, evaluation, and
+business gates:
 
-* Complete and reproducible source code repository.
+```powershell
+python scripts/retrain_model.py --force
+```
 
----
+Automatic triggers include changed source-data hash, model age, and observed
+ROC-AUC below the configured gate. A candidate replaces the champion only when
+every gate passes; otherwise the existing champion is preserved. See
+[the BPMN and UML architecture diagrams](docs/architecture.md).
 
-## Project Tasks
+## Deployment
 
-### Business Understanding
+This project includes a FastAPI technical demonstration using the legacy
+`processed/best_model.pkl` artifact. The corrected evaluation does not approve
+this model or the current candidate for business deployment. The API exposes
+this status under `deployment_approval`.
 
-* Familiarization with reference literature on Data Science and MLOps.
-* Study of the provided MLOps-based Data Science process model.
-* Conceptualization of the business problem.
-* Project planning and requirement analysis.
+The prototype predicts:
 
-### Data Collection, Exploration, and Preparation
+- `1`: Delivered / On Time
+- `0`: Not On Time, meaning Delayed or Returned
 
-* Dataset exploration.
-* Data quality assessment.
-* Data cleaning and preprocessing.
-* Feature engineering and preparation.
+The service uses `processed/scaler.pkl` when it contains a fitted scaler. In this
+checkout, `processed/scaler.pkl` contains only the numeric column names, so the API
+falls back to embedded scaler parameters reproduced exactly from the original
+notebook preprocessing and the saved `processed/X_train.csv`.
 
-### Modelling
+The model receives the same feature order used during training:
 
-* Selection of appropriate Machine Learning models.
-* Model training and optimization.
-* Performance evaluation and comparison.
+```text
+Customer_Region, Product_Category, Shipping_Mode, Shipping_Cost,
+Delivery_Days, Order_Month, Order_DayOfWeek, Cost_per_Day
+```
 
-### Evaluation
+### Run Locally
 
-* Evaluation of project outcomes against business objectives.
-* Assessment of model effectiveness and practical applicability.
+Create a fresh environment because the committed `.venv` may point to another machine:
 
-### Deployment
+```powershell
+python -m venv .deploy-venv
+.\.deploy-venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+uvicorn deployment.app:app --reload --host 127.0.0.1 --port 8000
+```
 
-* Preparation of deployment architecture.
-* Deployment of the ML-powered system.
-* Testing and validation of deployment components.
+Open the API docs at:
 
-### Utilization
+```text
+http://127.0.0.1:8000/docs
+```
 
-* Demonstration of system usage.
-* Monitoring of model performance.
-* Maintenance process demonstration for the prototype system.
+### Example Prediction
 
-### Documentation and Reproducibility
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/predict `
+  -ContentType "application/json" `
+  -Body '{
+    "Customer_Region": "West",
+    "Product_Category": "Home",
+    "Shipping_Mode": "Standard",
+    "Shipping_Cost": 122,
+    "Delivery_Days": 10,
+    "Order_Date": "2024-05-12"
+  }'
+```
 
-* Detailed scientific documentation of managerial and technical implementation steps.
-* Creation of architectural diagrams.
-* Documentation ensuring reproducibility of results.
+### Docker
 
-### Critical Reflection
+```powershell
+docker build -t ecommerce-shipping-prediction .
+docker run --rm -p 8000:8000 ecommerce-shipping-prediction
+```
 
-* Evaluation of applied techniques and technologies.
-* Reflection on project outcomes.
-* Assessment of the MLOps-based process model.
+### Endpoints
 
----
+- `GET /health`: service and artifact status
+- `POST /predict`: one raw shipment record
+- `POST /predict/batch`: multiple raw shipment records
+- `POST /predict/processed`: one already-encoded/scaled record
+- `POST /predict/processed/batch`: multiple already-encoded/scaled records
+- `GET /model-info`: selected model and artifact metadata
+- `GET /pipeline/status`: prototype MLOps component status
+- `GET /monitoring`: prediction and error monitoring summary
+- `GET /metrics`: Prometheus-style deployment metrics
 
-## Related Literature
+Category mappings follow the original notebook's pandas category codes:
 
-### Reference Paper
+- `Customer_Region`: Central=0, East=1, North=2, South=3, West=4
+- `Product_Category`: Beauty=0, Electronics=1, Fashion=2, Grocery=3, Home=4, Sports=5
+- `Shipping_Mode`: Express=0, Same Day=1, Standard=2
 
-**Kreuzberger, Dominik; Kühl, Niklas; Hirschl, Sebastian (2023)**
-
-*Machine Learning Operations (MLOps): Overview, Definition, and Architecture.*
-
-Published in **IEEE Access**, Volume 11, Pages 31866–31879.
-
-DOI: **10.1109/ACCESS.2023.3262138**
-
-### Additional Material
-
-* Material on the MLOps-based Data Science Process Model.
+Full deployment documentation, including the PDF requirement traceability matrix,
+impact assessment, deployment plan, test plan, monitoring plan, and maintenance
+plan, is available in `docs/deployment.md`.

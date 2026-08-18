@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-08-18T22:37:05.139649+00:00",
+  "primary_risk": "The provided fields may not contain enough pre-outcome predictive signal.",
+  "project": "E-Commerce Shipping Prediction",
+  "roles": {
+    "analytical_modeling": "hypotheses, experiments, models and analytical pipeline",
+    "data_infrastructure_and_operations": "CI/CD, serving, monitoring and retraining",
+    "data_management_and_analysis": "requirements, data acquisition, quality and pipeline",
+    "domain_expertise": "interpretation and business validation",
+    "strategy_and_project_management": "business goals, checkpoint and continuation decisions"
+  },
+  "scope": "End-to-end prototype following the MLOps-based Data Science Process Model",
+  "stages": [
+    "Business Understanding",
+    "Data Collection, Exploration, and Preparation",
+    "Analysis",
+    "Evaluation",
+    "Deployment",
+    "Utilization"
+  ]
+}

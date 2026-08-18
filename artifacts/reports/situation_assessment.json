@@ -1,0 +1,13 @@
+{
+  "continuation_decision": "CONTINUE_TO_DATA_COLLECTION",
+  "current_process": "Shipment outcomes are reviewed after delivery; the prototype tests earlier risk prediction.",
+  "decision_to_support": "Identify at-risk shipments early enough for an operational intervention.",
+  "generated_at": "2026-08-18T22:37:05.139630+00:00",
+  "problem": "Late or returned orders create customer-service effort, recovery cost, and poor customer experience.",
+  "suitability": "Suitable as an MLOps learning use case. Business deployment is conditional on measurable predictive and economic value.",
+  "users": [
+    "shipping operations",
+    "customer service",
+    "project management"
+  ]
+}

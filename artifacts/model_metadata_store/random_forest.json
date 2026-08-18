@@ -1,0 +1,91 @@
+{
+  "business_characteristics": {
+    "business_explanation": "nonlinear interactions; global importances available",
+    "interpretability": "medium",
+    "operational_complexity": "medium"
+  },
+  "business_economics": {
+    "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
+    "components": {
+      "correct_on_time_predictions": {
+        "count": 7321,
+        "total_eur": 14642.0,
+        "unit_value_eur": 2.0
+      },
+      "correct_risk_flags": {
+        "count": 182,
+        "total_eur": 5460.0,
+        "unit_value_eur": 30.0
+      },
+      "missed_risks": {
+        "count": 1806,
+        "total_eur": -144480.0,
+        "unit_cost_eur": 80.0
+      },
+      "unnecessary_interventions": {
+        "count": 691,
+        "total_eur": -6910.0,
+        "unit_cost_eur": 10.0
+      }
+    },
+    "confusion_matrix": {
+      "fn": 691,
+      "fp": 1806,
+      "tn": 182,
+      "tp": 7321
+    },
+    "currency": "EUR",
+    "negative_class": "Delayed or Returned / At Risk",
+    "net_benefit_eur": -131288.0,
+    "net_benefit_per_1000_predictions_eur": -13128.8,
+    "positive_class": "Delivered / On Time"
+  },
+  "estimator": "RandomForestClassifier",
+  "feature_columns": [
+    "Customer_Region",
+    "Product_Category",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Days",
+    "Order_Month",
+    "Order_DayOfWeek",
+    "Cost_per_Day"
+  ],
+  "generated_at": "2026-08-18T22:37:38.711905+00:00",
+  "inference_ms_per_1000": 18.760280002607033,
+  "mlflow_run_id": "d270f70294514c85b6b512907090add9",
+  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "name": "random_forest",
+  "parameters": {
+    "bootstrap": true,
+    "ccp_alpha": 0.0,
+    "class_weight": "balanced",
+    "criterion": "gini",
+    "max_depth": 14,
+    "max_features": "sqrt",
+    "max_leaf_nodes": null,
+    "max_samples": null,
+    "min_impurity_decrease": 0.0,
+    "min_samples_leaf": 4,
+    "min_samples_split": 2,
+    "min_weight_fraction_leaf": 0.0,
+    "monotonic_cst": null,
+    "n_estimators": 200,
+    "n_jobs": -1,
+    "oob_score": false,
+    "random_state": 42,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "training_rows": 30000,
+  "training_seconds": 0.7874447000212967,
+  "validation_metrics": {
+    "accuracy": 0.7503,
+    "balanced_accuracy": 0.5026518321109885,
+    "f1_weighted": 0.7097652540806886,
+    "minority_recall": 0.09154929577464789,
+    "precision_weighted": 0.6841081316201028,
+    "recall_weighted": 0.7503,
+    "roc_auc": 0.497992008466174
+  }
+}

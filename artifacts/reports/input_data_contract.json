@@ -1,0 +1,53 @@
+{
+  "columns": {
+    "Customer_Region": {
+      "logical_type": "category",
+      "nullable": false
+    },
+    "Delivery_Date": {
+      "logical_type": "date",
+      "nullable": false
+    },
+    "Delivery_Days": {
+      "logical_type": "integer",
+      "minimum_exclusive": 0,
+      "nullable": false
+    },
+    "Delivery_Status": {
+      "allowed": [
+        "Delivered",
+        "Delayed",
+        "Returned"
+      ],
+      "logical_type": "category",
+      "nullable": false
+    },
+    "Order_Date": {
+      "logical_type": "date",
+      "nullable": false
+    },
+    "Order_ID": {
+      "logical_type": "string",
+      "nullable": false,
+      "unique": true
+    },
+    "Product_Category": {
+      "logical_type": "category",
+      "nullable": false
+    },
+    "Ship_Date": {
+      "logical_type": "date",
+      "nullable": false
+    },
+    "Shipping_Cost": {
+      "logical_type": "number",
+      "minimum": 0,
+      "nullable": false
+    },
+    "Shipping_Mode": {
+      "logical_type": "category",
+      "nullable": false
+    }
+  },
+  "format": "CSV with header row, UTF-8 compatible"
+}

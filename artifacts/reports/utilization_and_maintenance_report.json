@@ -1,0 +1,15 @@
+{
+  "continuous_training": "Implemented but promotion remains gated by data, model, business, and test checks.",
+  "domain_user_interface": "FastAPI Swagger UI at /docs for prototype demonstration",
+  "generated_at": "2026-08-18T22:37:48.911082+00:00",
+  "maintenance": "Versioned retraining checks data hash, model age, observed performance, and manual triggers.",
+  "monitoring": [
+    "/health",
+    "/monitoring",
+    "/metrics",
+    "/pipeline/status",
+    "prediction JSONL log"
+  ],
+  "production_utilization_status": "NOT_STARTED_MODEL_NOT_APPROVED",
+  "support": "Validation errors and runtime prediction events are counted and logged."
+}

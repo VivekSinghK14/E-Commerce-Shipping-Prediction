@@ -1,0 +1,129 @@
+{
+  "business_goal_checks": {
+    "candidate_net_benefit_eur": {
+      "actual": -125178.0,
+      "passed": false,
+      "required": 0.0
+    },
+    "minority_recall": {
+      "actual": 0.15241448692152917,
+      "passed": false,
+      "required": 0.4
+    },
+    "net_benefit_improvement_over_baseline_eur": {
+      "actual": 17838.0,
+      "passed": true,
+      "required": 0.0
+    },
+    "roc_auc": {
+      "actual": 0.499118117341091,
+      "passed": false,
+      "required": 0.6
+    },
+    "weighted_f1_improvement_over_baseline": {
+      "actual": -0.02316712307090696,
+      "passed": false,
+      "required": 0.02
+    }
+  },
+  "business_goals_satisfied": false,
+  "candidate_business_economics": {
+    "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
+    "components": {
+      "correct_on_time_predictions": {
+        "count": 6721,
+        "total_eur": 13442.0,
+        "unit_value_eur": 2.0
+      },
+      "correct_risk_flags": {
+        "count": 303,
+        "total_eur": 9090.0,
+        "unit_value_eur": 30.0
+      },
+      "missed_risks": {
+        "count": 1685,
+        "total_eur": -134800.0,
+        "unit_cost_eur": 80.0
+      },
+      "unnecessary_interventions": {
+        "count": 1291,
+        "total_eur": -12910.0,
+        "unit_cost_eur": 10.0
+      }
+    },
+    "confusion_matrix": {
+      "fn": 1291,
+      "fp": 1685,
+      "tn": 303,
+      "tp": 6721
+    },
+    "currency": "EUR",
+    "negative_class": "Delayed or Returned / At Risk",
+    "net_benefit_eur": -125178.0,
+    "net_benefit_per_1000_predictions_eur": -12517.8,
+    "positive_class": "Delivered / On Time"
+  },
+  "candidate_test_metrics": {
+    "accuracy": 0.7024,
+    "balanced_accuracy": 0.495640593435802,
+    "f1_weighted": 0.6896037407976251,
+    "minority_recall": 0.15241448692152917,
+    "precision_weighted": 0.6783872715641065,
+    "recall_weighted": 0.7024,
+    "roc_auc": 0.499118117341091
+  },
+  "checkpoint_decision": "RETURN_TO_BUSINESS_UNDERSTANDING",
+  "generated_at": "2026-08-18T22:37:48.168550+00:00",
+  "mlflow_evaluation_run_id": "527152cad7c8430aa10e543128a70cd7",
+  "model": "random_forest",
+  "model_sha256": "0a01830c2dcee6c40fa16da24e25a1c1c2f12a01b86ad88ed203449ef72a92c8",
+  "naive_baseline_business_economics": {
+    "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
+    "components": {
+      "correct_on_time_predictions": {
+        "count": 8012,
+        "total_eur": 16024.0,
+        "unit_value_eur": 2.0
+      },
+      "correct_risk_flags": {
+        "count": 0,
+        "total_eur": 0.0,
+        "unit_value_eur": 30.0
+      },
+      "missed_risks": {
+        "count": 1988,
+        "total_eur": -159040.0,
+        "unit_cost_eur": 80.0
+      },
+      "unnecessary_interventions": {
+        "count": 0,
+        "total_eur": 0.0,
+        "unit_cost_eur": 10.0
+      }
+    },
+    "confusion_matrix": {
+      "fn": 0,
+      "fp": 1988,
+      "tn": 0,
+      "tp": 8012
+    },
+    "currency": "EUR",
+    "negative_class": "Delayed or Returned / At Risk",
+    "net_benefit_eur": -143016.0,
+    "net_benefit_per_1000_predictions_eur": -14301.6,
+    "positive_class": "Delivered / On Time"
+  },
+  "naive_baseline_test_metrics": {
+    "accuracy": 0.8012,
+    "balanced_accuracy": 0.5,
+    "f1_weighted": 0.7127708638685321,
+    "minority_recall": 0.0,
+    "precision_weighted": 0.64192144,
+    "recall_weighted": 0.8012,
+    "roc_auc": 0.5
+  },
+  "net_benefit_improvement_over_baseline_eur": 17838.0,
+  "next_action": "Revisit target, available predictors, and business framing; do not deploy",
+  "test_set_policy": "Used once after model and threshold were frozen on validation",
+  "threshold": 0.52
+}

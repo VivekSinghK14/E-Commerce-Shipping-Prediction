@@ -1,0 +1,16 @@
+{
+  "baseline": "DummyClassifier predicting training class prior",
+  "final_assessment_dataset": "untouched test split only",
+  "generated_at": "2026-08-18T22:37:06.184453+00:00",
+  "models": [
+    "dummy_majority",
+    "logistic_regression",
+    "random_forest",
+    "xgboost"
+  ],
+  "problem": "Binary classification: Delivered (1) vs Delayed/Returned (0)",
+  "random_state": 42,
+  "selection_dataset": "validation split only",
+  "selection_metric": "validation ROC-AUC",
+  "threshold_metric": "validation balanced accuracy"
+}

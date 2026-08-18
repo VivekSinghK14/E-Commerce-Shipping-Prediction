@@ -1,0 +1,20 @@
+{
+  "column_names": [
+    "Order_ID",
+    "Customer_Region",
+    "Product_Category",
+    "Order_Date",
+    "Ship_Date",
+    "Delivery_Date",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Status",
+    "Delivery_Days"
+  ],
+  "columns": 10,
+  "generated_at": "2026-08-18T22:37:05.210462+00:00",
+  "memory_bytes": 23591984,
+  "rows": 50000,
+  "source": "C:\\Users\\Vivek Kumar Singh\\Downloads\\mlops-main\\mlops-main\\50K Records.csv",
+  "source_sha256": "21b510220c0387f11d40fc229e26471d59adb145223af43518ce1442e887c7f8"
+}

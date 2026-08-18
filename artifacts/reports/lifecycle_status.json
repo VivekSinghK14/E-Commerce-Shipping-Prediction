@@ -1,0 +1,42 @@
+{
+  "deployment": {
+    "components": {
+      "ci_cd_workflow": true,
+      "container_definition": true,
+      "deployment_tests": true,
+      "guarded_retraining": true,
+      "monitoring_endpoints": true,
+      "serving_component": true,
+      "smoke_test": true
+    },
+    "deployment_executed": false,
+    "generated_at": "2026-08-18T22:37:48.911038+00:00",
+    "impact_assessment": {
+      "managerial": "A prediction API could support operations, but weak discrimination could waste intervention effort.",
+      "risk": "The evaluated candidate does not meet predictive or absolute economic gates.",
+      "technical": "FastAPI, Docker, CI, monitoring, MLflow, registry, and retraining components are available."
+    },
+    "production_business_integration": "BLOCKED_BY_EVALUATION_GATE",
+    "prototype_deployment_status": "AVAILABLE_FOR_TECHNICAL_DEMONSTRATION",
+    "reason": "The process model requires return to Business Understanding when business goals fail.",
+    "rollback_policy": "A candidate never replaces the champion until all gates and tests pass."
+  },
+  "evaluation_decision": "RETURN_TO_BUSINESS_UNDERSTANDING",
+  "final_status": "TECHNICAL_PROTOTYPE_COMPLETE_BUSINESS_DEPLOYMENT_BLOCKED",
+  "generated_at": "2026-08-18T22:37:48.911100+00:00",
+  "utilization": {
+    "continuous_training": "Implemented but promotion remains gated by data, model, business, and test checks.",
+    "domain_user_interface": "FastAPI Swagger UI at /docs for prototype demonstration",
+    "generated_at": "2026-08-18T22:37:48.911082+00:00",
+    "maintenance": "Versioned retraining checks data hash, model age, observed performance, and manual triggers.",
+    "monitoring": [
+      "/health",
+      "/monitoring",
+      "/metrics",
+      "/pipeline/status",
+      "prediction JSONL log"
+    ],
+    "production_utilization_status": "NOT_STARTED_MODEL_NOT_APPROVED",
+    "support": "Validation errors and runtime prediction events are counted and logged."
+  }
+}

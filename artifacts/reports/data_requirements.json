@@ -1,0 +1,24 @@
+{
+  "allowed_outcomes": [
+    "Delivered",
+    "Delayed",
+    "Returned"
+  ],
+  "business_question": "Can order-time attributes identify shipments at risk of not being delivered?",
+  "generated_at": "2026-08-18T22:37:05.208730+00:00",
+  "minimum_rows": 1000,
+  "prediction_target": "Delivered (1) versus Delayed/Returned (0)",
+  "required_columns": [
+    "Order_ID",
+    "Customer_Region",
+    "Product_Category",
+    "Order_Date",
+    "Ship_Date",
+    "Delivery_Date",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Status",
+    "Delivery_Days"
+  ],
+  "unit_of_analysis": "one order"
+}

@@ -1,0 +1,75 @@
+{
+  "business_characteristics": {
+    "business_explanation": "benchmark only",
+    "interpretability": "high",
+    "operational_complexity": "very low"
+  },
+  "business_economics": {
+    "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
+    "components": {
+      "correct_on_time_predictions": {
+        "count": 8012,
+        "total_eur": 16024.0,
+        "unit_value_eur": 2.0
+      },
+      "correct_risk_flags": {
+        "count": 0,
+        "total_eur": 0.0,
+        "unit_value_eur": 30.0
+      },
+      "missed_risks": {
+        "count": 1988,
+        "total_eur": -159040.0,
+        "unit_cost_eur": 80.0
+      },
+      "unnecessary_interventions": {
+        "count": 0,
+        "total_eur": 0.0,
+        "unit_cost_eur": 10.0
+      }
+    },
+    "confusion_matrix": {
+      "fn": 0,
+      "fp": 1988,
+      "tn": 0,
+      "tp": 8012
+    },
+    "currency": "EUR",
+    "negative_class": "Delayed or Returned / At Risk",
+    "net_benefit_eur": -143016.0,
+    "net_benefit_per_1000_predictions_eur": -14301.6,
+    "positive_class": "Delivered / On Time"
+  },
+  "estimator": "DummyClassifier",
+  "feature_columns": [
+    "Customer_Region",
+    "Product_Category",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Days",
+    "Order_Month",
+    "Order_DayOfWeek",
+    "Cost_per_Day"
+  ],
+  "generated_at": "2026-08-18T22:37:21.910316+00:00",
+  "inference_ms_per_1000": 0.23666000342927873,
+  "mlflow_run_id": "11981ab80f8547c2ad2ff793c00d58ec",
+  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "name": "dummy_majority",
+  "parameters": {
+    "constant": null,
+    "random_state": null,
+    "strategy": "prior"
+  },
+  "training_rows": 30000,
+  "training_seconds": 0.001101300003938377,
+  "validation_metrics": {
+    "accuracy": 0.8012,
+    "balanced_accuracy": 0.5,
+    "f1_weighted": 0.7127708638685321,
+    "minority_recall": 0.0,
+    "precision_weighted": 0.64192144,
+    "recall_weighted": 0.8012,
+    "roc_auc": 0.5
+  }
+}

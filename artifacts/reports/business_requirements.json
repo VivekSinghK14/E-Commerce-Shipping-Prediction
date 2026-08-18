@@ -1,0 +1,23 @@
+{
+  "business_objective": "Predict whether an order will be delivered/on time from available inputs.",
+  "functional_requirements": [
+    "accept one or multiple shipment records",
+    "return prediction, label, probability, and threshold",
+    "record model and pipeline metadata",
+    "expose health and monitoring information"
+  ],
+  "generated_at": "2026-08-18T22:37:05.139644+00:00",
+  "nonfunctional_requirements": [
+    "reproducible training from raw CSV",
+    "no train/validation/test leakage",
+    "versioned model and feature artifacts",
+    "automated tests and CI",
+    "gated promotion with rollback protection"
+  ],
+  "success_criteria": {
+    "minimum_minority_recall": 0.4,
+    "minimum_test_roc_auc": 0.6,
+    "minimum_weighted_f1_uplift": 0.02,
+    "positive_candidate_net_benefit_required": true
+  }
+}

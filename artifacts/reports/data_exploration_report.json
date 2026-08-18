@@ -1,0 +1,66 @@
+{
+  "category_distributions": {
+    "Customer_Region": {
+      "Central": 10117,
+      "East": 9785,
+      "North": 9924,
+      "South": 10073,
+      "West": 10101
+    },
+    "Delivery_Status": {
+      "Delayed": 7505,
+      "Delivered": 40062,
+      "Returned": 2433
+    },
+    "Product_Category": {
+      "Beauty": 8331,
+      "Electronics": 8376,
+      "Fashion": 8345,
+      "Grocery": 8270,
+      "Home": 8298,
+      "Sports": 8380
+    },
+    "Shipping_Mode": {
+      "Express": 15065,
+      "Same Day": 4962,
+      "Standard": 29973
+    }
+  },
+  "date_ranges": {
+    "Delivery_Date": {
+      "max": "2026-01-14T00:00:00",
+      "min": "2022-01-03T00:00:00"
+    },
+    "Order_Date": {
+      "max": "2025-12-31T00:00:00",
+      "min": "2022-01-01T00:00:00"
+    },
+    "Ship_Date": {
+      "max": "2026-01-05T00:00:00",
+      "min": "2022-01-01T00:00:00"
+    }
+  },
+  "generated_at": "2026-08-18T22:37:05.481553+00:00",
+  "numeric_summary": {
+    "Delivery_Days": {
+      "25%": 4.0,
+      "50%": 6.0,
+      "75%": 8.0,
+      "count": 50000.0,
+      "max": 10.0,
+      "mean": 5.98976,
+      "min": 2.0,
+      "std": 2.5736486970354955
+    },
+    "Shipping_Cost": {
+      "25%": 88.0,
+      "50%": 121.0,
+      "75%": 164.0,
+      "count": 50000.0,
+      "max": 399.0,
+      "mean": 138.83828,
+      "min": 50.0,
+      "std": 72.49868914566854
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "explainability": "feature importance available for tree candidates",
+  "generated_at": "2026-08-18T22:37:06.182807+00:00",
+  "promotion": "all business-goal gates must pass",
+  "reproducibility": "fixed seed, portable paths, persisted split artifacts",
+  "task": "supervised binary classification",
+  "validation": "model/threshold chosen without test-set access"
+}

@@ -1,0 +1,22 @@
+{
+  "components": {
+    "ci_cd_workflow": true,
+    "container_definition": true,
+    "deployment_tests": true,
+    "guarded_retraining": true,
+    "monitoring_endpoints": true,
+    "serving_component": true,
+    "smoke_test": true
+  },
+  "deployment_executed": false,
+  "generated_at": "2026-08-18T22:37:48.911038+00:00",
+  "impact_assessment": {
+    "managerial": "A prediction API could support operations, but weak discrimination could waste intervention effort.",
+    "risk": "The evaluated candidate does not meet predictive or absolute economic gates.",
+    "technical": "FastAPI, Docker, CI, monitoring, MLflow, registry, and retraining components are available."
+  },
+  "production_business_integration": "BLOCKED_BY_EVALUATION_GATE",
+  "prototype_deployment_status": "AVAILABLE_FOR_TECHNICAL_DEMONSTRATION",
+  "reason": "The process model requires return to Business Understanding when business goals fail.",
+  "rollback_policy": "A candidate never replaces the champion until all gates and tests pass."
+}

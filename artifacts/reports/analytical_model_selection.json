@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-08-18T22:37:47.690088+00:00",
+  "mlflow_run_id": "d270f70294514c85b6b512907090add9",
+  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "model_path": "C:\\Users\\Vivek Kumar Singh\\Downloads\\mlops-main\\mlops-main\\artifacts\\model_registry\\candidate_model.joblib",
+  "model_sha256": "0a01830c2dcee6c40fa16da24e25a1c1c2f12a01b86ad88ed203449ef72a92c8",
+  "promotion_status": "pending final evaluation and business checkpoint",
+  "registry_stage": "candidate",
+  "selected_model": "random_forest",
+  "selection_reason": "Highest validation ROC-AUC among non-baseline candidates",
+  "validation_metrics_at_default_threshold": {
+    "accuracy": 0.7503,
+    "balanced_accuracy": 0.5026518321109885,
+    "f1_weighted": 0.7097652540806886,
+    "minority_recall": 0.09154929577464789,
+    "precision_weighted": 0.6841081316201028,
+    "recall_weighted": 0.7503,
+    "roc_auc": 0.497992008466174
+  },
+  "validation_selected_threshold": 0.52
+}

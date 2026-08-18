@@ -1,0 +1,8 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.ipynb
+50K Records.csv
+evalaution
+modelling.ipynb

@@ -1,0 +1,64 @@
+{
+  "category_maps": {
+    "Customer_Region": {
+      "Central": 0,
+      "East": 1,
+      "North": 2,
+      "South": 3,
+      "West": 4
+    },
+    "Product_Category": {
+      "Beauty": 0,
+      "Electronics": 1,
+      "Fashion": 2,
+      "Grocery": 3,
+      "Home": 4,
+      "Sports": 5
+    },
+    "Shipping_Mode": {
+      "Express": 0,
+      "Same Day": 1,
+      "Standard": 2
+    }
+  },
+  "feature_columns": [
+    "Customer_Region",
+    "Product_Category",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Days",
+    "Order_Month",
+    "Order_DayOfWeek",
+    "Cost_per_Day"
+  ],
+  "generated_at": "2026-08-18T22:37:05.948554+00:00",
+  "leakage_controls": [
+    "Order_ID and outcome/date-after-order fields excluded from predictors",
+    "scaler fit on training rows only",
+    "threshold and model selection use validation, never test"
+  ],
+  "numeric_scaled_columns": [
+    "Shipping_Cost",
+    "Delivery_Days",
+    "Order_Month",
+    "Order_DayOfWeek",
+    "Cost_per_Day"
+  ],
+  "split_policy": "60% train / 20% validation / 20% untouched test, stratified",
+  "split_rows": {
+    "test": 10000,
+    "train": 30000,
+    "validation": 10000
+  },
+  "target_maps": {
+    "binary": {
+      "Delayed_or_Returned": 0,
+      "Delivered": 1
+    },
+    "multiclass": {
+      "Delayed": 0,
+      "Delivered": 1,
+      "Returned": 2
+    }
+  }
+}

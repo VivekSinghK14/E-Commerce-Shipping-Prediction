@@ -1,0 +1,26 @@
+{
+  "blocking_defects": 0,
+  "checks": {
+    "delivery_days_mismatch": 0,
+    "duplicate_order_ids": 0,
+    "duplicate_rows": 0,
+    "invalid_categories": {
+      "Customer_Region": 0,
+      "Delivery_Status": 0,
+      "Product_Category": 0,
+      "Shipping_Mode": 0
+    },
+    "invalid_dates": {
+      "Delivery_Date": 0,
+      "Order_Date": 0,
+      "Ship_Date": 0
+    },
+    "missing_values": 0,
+    "negative_shipping_cost": 0,
+    "nonpositive_delivery_days": 0,
+    "order_after_ship": 0,
+    "ship_after_delivery": 0
+  },
+  "data_sufficient": true,
+  "generated_at": "2026-08-18T22:37:05.479830+00:00"
+}

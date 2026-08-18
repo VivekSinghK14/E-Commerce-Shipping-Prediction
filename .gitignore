@@ -1,0 +1,16 @@
+.venv/
+.deploy-venv/
+__pycache__/
+*.pyc
+uvicorn*.log
+runtime/
+.ipynb_checkpoints/
+.pytest_cache/
+tmp/
+
+# Reproducible local experiment/runtime state. Regenerate with
+# `python scripts/run_end_to_end_pipeline.py`.
+artifacts/mlflow/
+artifacts/retraining_runs/
+artifacts/retraining_state.json
+artifacts/retraining_report.json

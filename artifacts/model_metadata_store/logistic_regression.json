@@ -1,0 +1,87 @@
+{
+  "business_characteristics": {
+    "business_explanation": "coefficients show direction and magnitude",
+    "interpretability": "high",
+    "operational_complexity": "low"
+  },
+  "business_economics": {
+    "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
+    "components": {
+      "correct_on_time_predictions": {
+        "count": 4199,
+        "total_eur": 8398.0,
+        "unit_value_eur": 2.0
+      },
+      "correct_risk_flags": {
+        "count": 920,
+        "total_eur": 27600.0,
+        "unit_value_eur": 30.0
+      },
+      "missed_risks": {
+        "count": 1068,
+        "total_eur": -85440.0,
+        "unit_cost_eur": 80.0
+      },
+      "unnecessary_interventions": {
+        "count": 3813,
+        "total_eur": -38130.0,
+        "unit_cost_eur": 10.0
+      }
+    },
+    "confusion_matrix": {
+      "fn": 3813,
+      "fp": 1068,
+      "tn": 920,
+      "tp": 4199
+    },
+    "currency": "EUR",
+    "negative_class": "Delayed or Returned / At Risk",
+    "net_benefit_eur": -87572.0,
+    "net_benefit_per_1000_predictions_eur": -8757.199999999999,
+    "positive_class": "Delivered / On Time"
+  },
+  "estimator": "LogisticRegression",
+  "feature_columns": [
+    "Customer_Region",
+    "Product_Category",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Delivery_Days",
+    "Order_Month",
+    "Order_DayOfWeek",
+    "Cost_per_Day"
+  ],
+  "generated_at": "2026-08-18T22:37:29.242752+00:00",
+  "inference_ms_per_1000": 0.2820199995767325,
+  "mlflow_run_id": "dd4808424c6e45aa97deac92505bfff0",
+  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "name": "logistic_regression",
+  "parameters": {
+    "C": 1.0,
+    "class_weight": "balanced",
+    "dual": false,
+    "fit_intercept": true,
+    "intercept_scaling": 1,
+    "l1_ratio": null,
+    "max_iter": 1000,
+    "multi_class": "deprecated",
+    "n_jobs": null,
+    "penalty": "l2",
+    "random_state": 42,
+    "solver": "lbfgs",
+    "tol": 0.0001,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "training_rows": 30000,
+  "training_seconds": 0.12916980002773926,
+  "validation_metrics": {
+    "accuracy": 0.5119,
+    "balanced_accuracy": 0.4934327633298543,
+    "f1_weighted": 0.5611258593871947,
+    "minority_recall": 0.46277665995975853,
+    "precision_weighted": 0.6773818137809051,
+    "recall_weighted": 0.5119,
+    "roc_auc": 0.49511177147759244
+  }
+}
