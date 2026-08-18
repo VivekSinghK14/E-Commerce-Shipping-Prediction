@@ -169,7 +169,7 @@ sequenceDiagram
     alt every business gate passes
       EV->>REG: promote candidate to champion
     else any gate fails
-      EV-->>RT: reject; preserve existing champion
+      EV-->>RT: reject and preserve existing champion
     end
   else no trigger
     RT-->>Scheduler: skip and report reason
