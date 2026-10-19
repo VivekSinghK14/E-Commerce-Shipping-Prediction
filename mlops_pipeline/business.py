@@ -9,7 +9,7 @@ from .config import PipelineConfig
 def classification_economics(
     y_true: Iterable[int], prediction: Iterable[int], config: PipelineConfig
 ) -> dict:
-    """Estimate business value for Delivered=1 and Delayed/Returned=0.
+    """Estimate business value for Delivered=1 and Delayed=0.
 
     These are scenario assumptions, not accounting facts. A correct risk flag
     (true negative in the Delivered-positive convention) enables intervention;
@@ -41,8 +41,8 @@ def classification_economics(
     net = sum(item["total_eur"] for item in components.values())
     return {
         "currency": "EUR",
-        "positive_class": "Delivered / On Time",
-        "negative_class": "Delayed or Returned / At Risk",
+        "positive_class": "Delivered",
+        "negative_class": "Delayed",
         "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
         "components": components,
         "net_benefit_eur": float(net),

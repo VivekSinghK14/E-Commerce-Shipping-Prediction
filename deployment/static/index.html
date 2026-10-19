@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipping Delay Predictor</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1d2733; --muted: #5d6772; --line: #dde3ea;
+    --brand: #17324d; --accent: #2e75b6; --ok: #2e7d32; --ok-bg: #e9f5ea;
+    --late: #b45309; --late-bg: #fff4e5; --warn: #b42318; --warn-bg: #fdecec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { background: var(--brand); color: #fff; padding: 18px 16px; }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  header p { margin: 4px 0 0; opacity: .8; font-size: .9rem; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px; }
+  .banner { background: #eaf3fa; color: var(--brand); border: 1px solid #b8d4ea; border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 1.05rem; color: var(--brand); }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  select, input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: .95rem; background: #fff; color: var(--ink); }
+  button { margin-top: 16px; width: 100%; padding: 11px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .result { margin-top: 4px; border-radius: 8px; padding: 16px; display: none; }
+  .result.delivered { background: var(--ok-bg); border: 1px solid #b9dfbc; }
+  .result.delayed { background: var(--late-bg); border: 1px solid #f5d29c; }
+  .result .label { font-size: 1.6rem; font-weight: 700; }
+  .delivered .label { color: var(--ok); } .delayed .label { color: var(--late); }
+  .bar { height: 10px; background: var(--line); border-radius: 5px; margin: 10px 0 4px; position: relative; overflow: hidden; }
+  .bar span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+  .bar i { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+  .small { font-size: .82rem; color: var(--muted); }
+  .error { color: var(--warn); font-size: .9rem; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  td, th { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+  .pill.fail { background: var(--warn-bg); color: var(--warn); } .pill.pass { background: var(--ok-bg); color: var(--ok); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 1.4rem; color: var(--brand); }
+  footer { text-align: center; font-size: .8rem; color: var(--muted); padding: 20px 16px 30px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>E-Commerce Shipping Delay Predictor</h1>
+  <p>Predicts whether an order will be <b>Delivered</b> or <b>Delayed</b> from details known when the order is placed.</p>
+</header>
+<main>
+  <div class="banner" id="banner" hidden></div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>New order</h2>
+      <form id="form">
+        <label for="region">Customer region</label>
+        <select id="region" name="Customer_Region">
+          <option>Central</option><option>East</option><option>North</option><option>South</option><option selected>West</option>
+        </select>
+        <label for="category">Product category</label>
+        <select id="category" name="Product_Category">
+          <option>Beauty</option><option>Electronics</option><option>Fashion</option><option>Grocery</option><option selected>Home</option><option>Sports</option>
+        </select>
+        <label for="mode">Shipping mode</label>
+        <select id="mode" name="Shipping_Mode">
+          <option>Express</option><option>Same Day</option><option selected>Standard</option>
+        </select>
+        <label for="cost">Shipping cost</label>
+        <input id="cost" name="Shipping_Cost" type="number" min="0" step="1" value="122" required>
+        <label for="date">Order date</label>
+        <input id="date" name="Order_Date" type="date" value="2024-05-12" required>
+        <button type="submit" id="submit">Predict</button>
+      </form>
+      <div class="error" id="error"></div>
+    </section>
+
+    <section class="card">
+      <h2>Prediction</h2>
+      <p class="small" id="placeholder">Fill in the order and press <b>Predict</b>.</p>
+      <div class="result" id="result">
+        <div class="label" id="resultLabel"></div>
+        <div class="bar"><span id="probBar"></span><i id="thrMark"></i></div>
+        <div class="small" id="probText"></div>
+        <div class="small" id="basis" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Model status</h2>
+      <table id="statusTable"><tbody><tr><td class="small">Loading...</td></tr></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Live monitoring</h2>
+      <div class="stats">
+        <div class="stat"><b id="mPred">-</b><span class="small">predictions</span></div>
+        <div class="stat"><b id="mDelivered">-</b><span class="small">Delivered</span></div>
+        <div class="stat"><b id="mDelayed">-</b><span class="small">Delayed</span></div>
+      </div>
+      <p class="small" id="mMeta" style="margin-top:12px"></p>
+      <p class="small">Technical endpoints: <a href="/docs">API docs</a> · <a href="/health">health</a> · <a href="/metrics">metrics</a> · <a href="/pipeline/status">pipeline</a></p>
+    </section>
+  </div>
+</main>
+<footer>MLOps-DSPM course prototype · Returned orders are out of scope · XGBoost model trained on 47,567 orders</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const pct = (v) => (v * 100).toFixed(1) + "%";
+const GATE_NAMES = {
+  roc_auc: "Test ROC-AUC >= 0.60",
+  minority_recall: "Delayed recall >= 0.40",
+  weighted_f1_improvement_over_baseline: "Weighted F1 beats baseline",
+  net_benefit_improvement_over_baseline_eur: "Better value than baseline",
+  candidate_net_benefit_eur: "Positive net benefit",
+};
+
+async function getJSON(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail;
+    throw new Error(detail || `HTTP ${response.status}`);
+  }
+  return body;
+}
+
+async function loadStatus() {
+  try {
+    const health = await getJSON("/health");
+    const approval = health.deployment_approval;
+    if (approval.warning) { $("banner").textContent = "ℹ " + approval.warning; $("banner").hidden = false; }
+    const rows = [
+      ["Model", (approval.model_name || "-").replace("xgboost", "XGBoost")],
+      ["Serving", approval.approved ? "Live" : "Blocked"],
+      ["Deployment", approval.decision === "DEPLOYED_BY_MANAGEMENT_OVERRIDE" ? "Live prototype" : approval.decision],
+      ["Evaluation result", approval.evaluation_decision || "-"],
+      ["Decision threshold", approval.threshold],
+    ];
+    let html = rows.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("");
+    const override = approval.override;
+    if (override) {
+      const m = override.test_metrics;
+      html += `<tr><td>Test ROC-AUC</td><td class="num">${m.roc_auc.toFixed(3)}</td></tr>`;
+      html += `<tr><td>Delayed recall</td><td class="num">${pct(m.minority_recall)}</td></tr>`;
+      html += `<tr><td>Gates not met</td><td class="num">${override.failed_business_gates.map((g) => GATE_NAMES[g] || g).join("<br>")}</td></tr>`;
+      html += `<tr><td>Deployed by</td><td class="num">${override.actor}</td></tr>`;
+    }
+    $("statusTable").innerHTML = "<tbody>" + html + "</tbody>";
+  } catch (err) {
+    $("statusTable").innerHTML = `<tbody><tr><td class="error">Status unavailable: ${err.message}</td></tr></tbody>`;
+  }
+}
+
+async function loadMonitoring() {
+  try {
+    const m = await getJSON("/monitoring");
+    $("mPred").textContent = m.prediction_count;
+    $("mDelivered").textContent = m.class_counts.Delivered || 0;
+    $("mDelayed").textContent = m.class_counts.Delayed || 0;
+    const avg = m.average_on_time_probability;
+    $("mMeta").textContent = `Uptime ${Math.round(m.uptime_seconds / 60)} min · errors ${m.error_count}` +
+      (avg != null ? ` · average P(Delivered) ${pct(avg)}` : "");
+  } catch (err) { $("mMeta").textContent = "Monitoring unavailable: " + err.message; }
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("error").textContent = "";
+  $("submit").disabled = true;
+  const form = new FormData(event.target);
+  const payload = Object.fromEntries(form.entries());
+  payload.Shipping_Cost = Number(payload.Shipping_Cost);
+  try {
+    const r = await getJSON("/predict", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    const delivered = r.prediction === 1;
+    $("placeholder").hidden = true;
+    $("result").style.display = "block";
+    $("result").className = "result " + (delivered ? "delivered" : "delayed");
+    $("resultLabel").textContent = delivered ? "✓ Delivered" : "⏱ Delayed";
+    $("probBar").style.width = pct(r.on_time_probability);
+    $("thrMark").style.left = pct(r.threshold);
+    $("probText").textContent = `P(Delivered) = ${pct(r.on_time_probability)} · threshold ${pct(r.threshold)} ` +
+      `(below the threshold the order is flagged Delayed)`;
+    $("basis").textContent = `Prediction ID ${r.prediction_id.slice(0, 8)} · ${r.deployment_basis}`;
+    loadMonitoring();
+  } catch (err) {
+    $("error").textContent = "Prediction failed: " + err.message;
+  } finally {
+    $("submit").disabled = false;
+  }
+});
+
+loadStatus();
+loadMonitoring();
+setInterval(loadMonitoring, 15000);
+</script>
+</body>
+</html>

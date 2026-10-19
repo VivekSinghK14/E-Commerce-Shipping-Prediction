@@ -26,39 +26,44 @@
     "Product_Category",
     "Shipping_Mode",
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day"
+    "Order_DayOfWeek"
   ],
-  "generated_at": "2026-08-18T22:37:05.948554+00:00",
+  "generated_at": "2026-10-15T15:32:10.802273+00:00",
   "leakage_controls": [
-    "Order_ID and outcome/date-after-order fields excluded from predictors",
+    "Order_ID, delivery outcome, ship/delivery dates, and post-outcome Delivery_Days excluded from predictors",
+    "Cost_per_Day excluded because it is derived from post-outcome Delivery_Days",
     "scaler fit on training rows only",
     "threshold and model selection use validation, never test"
   ],
   "numeric_scaled_columns": [
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day"
+    "Order_DayOfWeek"
   ],
+  "scope_filter": {
+    "kept_outcomes": [
+      "Delivered",
+      "Delayed"
+    ],
+    "reason": "Returned orders are outside the project scope; the model predicts Delivered vs Delayed only.",
+    "removed_outcomes": {
+      "Returned": 2433
+    },
+    "rows_in_scope": 47567,
+    "rows_removed": 2433,
+    "source_rows": 50000
+  },
   "split_policy": "60% train / 20% validation / 20% untouched test, stratified",
   "split_rows": {
-    "test": 10000,
-    "train": 30000,
-    "validation": 10000
+    "test": 9514,
+    "train": 28539,
+    "validation": 9514
   },
   "target_maps": {
     "binary": {
-      "Delayed_or_Returned": 0,
-      "Delivered": 1
-    },
-    "multiclass": {
       "Delayed": 0,
-      "Delivered": 1,
-      "Returned": 2
+      "Delivered": 1
     }
   }
 }

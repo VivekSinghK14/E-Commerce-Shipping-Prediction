@@ -4,15 +4,11 @@
     "Product_Category",
     "Shipping_Mode",
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day"
+    "Order_DayOfWeek"
   ],
   "feature_types": {
-    "Cost_per_Day": "numeric and finite",
     "Customer_Region": "numeric and finite",
-    "Delivery_Days": "numeric and finite",
     "Order_DayOfWeek": "numeric and finite",
     "Order_Month": "numeric and finite",
     "Product_Category": "numeric and finite",
@@ -26,15 +22,10 @@
     "test"
   ],
   "targets": {
-    "binary_target": [
-      0,
-      1
-    ],
-    "multiclass_target": [
-      0,
-      1,
-      2
-    ]
+    "binary_target": {
+      "0": "Delayed",
+      "1": "Delivered"
+    }
   },
   "validation_status": "passed"
 }

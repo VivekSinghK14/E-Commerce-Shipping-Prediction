@@ -57,18 +57,14 @@ FEATURE_COLUMNS = [
     "Product_Category",
     "Shipping_Mode",
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
     "Order_DayOfWeek",
-    "Cost_per_Day",
 ]
 
 NUMERIC_COLUMNS = [
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
     "Order_DayOfWeek",
-    "Cost_per_Day",
 ]
 
 REQUIRED_RAW_COLUMNS = [
@@ -83,3 +79,13 @@ REQUIRED_RAW_COLUMNS = [
     "Delivery_Status",
     "Delivery_Days",
 ]
+
+# Project scope: binary Delivered vs Delayed. Returned orders are a different
+# business process (reverse logistics), so they are removed at ingestion and
+# never reach features, targets, models, reports, or the serving API.
+TARGET_COLUMN = "Delivery_Status"
+POSITIVE_OUTCOME = "Delivered"
+NEGATIVE_OUTCOME = "Delayed"
+TARGET_OUTCOMES = [POSITIVE_OUTCOME, NEGATIVE_OUTCOME]
+TARGET_MAP = {POSITIVE_OUTCOME: 1, NEGATIVE_OUTCOME: 0}
+OUT_OF_SCOPE_OUTCOMES = ["Returned"]

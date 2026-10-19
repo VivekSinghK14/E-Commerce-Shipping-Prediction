@@ -19,8 +19,14 @@ from mlops_pipeline.model_stage import develop_and_assess_models
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the complete MLOps-DSPM lifecycle.")
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--raw-data", type=Path, default=None)
+    parser.add_argument("--artifacts-dir", type=Path, default=None)
     args = parser.parse_args()
-    config = PipelineConfig()
+    defaults = PipelineConfig()
+    config = PipelineConfig(
+        raw_data=(args.raw_data or defaults.raw_data).resolve(),
+        artifacts=(args.artifacts_dir or defaults.artifacts).resolve(),
+    )
 
     print("[1/6] Business Understanding")
     document_business_understanding(config)

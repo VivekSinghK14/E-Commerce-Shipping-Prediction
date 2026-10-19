@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipping Delay Predictor</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1d2733; --muted: #5d6772; --line: #dde3ea;
+    --brand: #17324d; --accent: #2e75b6; --ok: #2e7d32; --ok-bg: #e9f5ea;
+    --late: #b45309; --late-bg: #fff4e5; --warn: #b42318; --warn-bg: #fdecec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161c; --card: #1a2129; --ink: #e6ebf0; --muted: #9aa6b2; --line: #2b3540;
+      --brand: #9cc3e6; --accent: #4a90d9; --ok: #7bc47f; --ok-bg: #1b2e1d;
+      --late: #f0a35a; --late-bg: #33240f; --warn: #f2867c; --warn-bg: #3a1c1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.45; }
+  header { background: #17324d; color: #fff; padding: 22px 16px; }
+  header .wrap { max-width: 1080px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 6px 0 0; opacity: .85; font-size: .95rem; }
+  main { max-width: 1080px; margin: 0 auto; padding: 16px; }
+  .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips span { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 2px 10px; font-size: .78rem; }
+  .note { background: var(--bg); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; font-size: .88rem; margin-top: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .wide { grid-column: 1 / -1; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
+  .card h2 { margin: 0 0 12px; font-size: 1.05rem; color: var(--brand); }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  select, input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: .95rem; background: var(--card); color: var(--ink); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { margin-top: 16px; width: 100%; padding: 11px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); margin-top: 8px; padding: 8px; font-size: .9rem; }
+  .result { border-radius: 8px; padding: 16px; display: none; }
+  .result.delivered { background: var(--ok-bg); border: 1px solid var(--ok); }
+  .result.delayed { background: var(--late-bg); border: 1px solid var(--late); }
+  .result .label { font-size: 1.7rem; font-weight: 700; }
+  .delivered .label { color: var(--ok); } .delayed .label { color: var(--late); }
+  .bar { height: 10px; background: var(--line); border-radius: 5px; margin: 12px 0 4px; position: relative; overflow: hidden; }
+  .bar span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+  .bar i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+  .small { font-size: .84rem; color: var(--muted); }
+  .error { color: var(--warn); font-size: .9rem; margin-top: 10px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  td, th { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .76rem; font-weight: 600; }
+  .pill.fail { background: var(--late-bg); color: var(--late); } .pill.pass { background: var(--ok-bg); color: var(--ok); }
+  .steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  @media (max-width: 760px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+  .step { background: var(--bg); border-radius: 8px; padding: 10px; font-size: .82rem; }
+  .step b { display: block; color: var(--brand); font-size: .88rem; margin-bottom: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 1.35rem; color: var(--brand); }
+  img { max-width: 100%; height: auto; border-radius: 6px; background: #fff; }
+  footer { text-align: center; font-size: .8rem; color: var(--muted); padding: 20px 16px 30px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>E-Commerce Shipping Delay Predictor</h1>
+  <p>Predicts whether an order will be <b>Delivered</b> or <b>Delayed</b> from details known when the order is placed.</p>
+  <div class="chips"><span>MLOps-DSPM course project</span><span>XGBoost</span><span id="chipRows">47,567 orders</span><span>Live prototype</span></div>
+</div></header>
+<main>
+  <div class="grid">
+    <section class="card">
+      <h2>New order</h2>
+      <form id="form">
+        <label for="region">Customer region</label>
+        <select id="region" name="Customer_Region"></select>
+        <label for="category">Product category</label>
+        <select id="category" name="Product_Category"></select>
+        <label for="mode">Shipping mode</label>
+        <select id="mode" name="Shipping_Mode"></select>
+        <div class="row">
+          <div><label for="cost">Shipping cost</label>
+            <input id="cost" name="Shipping_Cost" type="number" min="0" step="1" value="122" required></div>
+          <div><label for="date">Order date</label>
+            <input id="date" name="Order_Date" type="date" value="2024-05-12" required></div>
+        </div>
+        <button type="submit" id="submit" disabled>Loading model…</button>
+        <button type="button" class="secondary" id="random">Try a random order</button>
+      </form>
+      <div class="error" id="error"></div>
+    </section>
+
+    <section class="card">
+      <h2>Prediction</h2>
+      <p class="small" id="placeholder">Fill in the order and press <b>Predict</b>.</p>
+      <div class="result" id="result">
+        <div class="label" id="resultLabel"></div>
+        <div class="bar"><span id="probBar"></span><i id="thrMark"></i></div>
+        <div class="small" id="probText"></div>
+      </div>
+      <h2 style="margin-top:18px">This session</h2>
+      <div class="stats">
+        <div class="stat"><b id="sTotal">0</b><span class="small">predictions</span></div>
+        <div class="stat"><b id="sDelivered">0</b><span class="small">Delivered</span></div>
+        <div class="stat"><b id="sDelayed">0</b><span class="small">Delayed</span></div>
+      </div>
+      <div class="scroll"><table id="history"><thead><tr><th>Order</th><th class="num">P(Delivered)</th><th class="num">Result</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="card wide">
+      <h2>How the prediction is made</h2>
+      <div class="steps" id="steps"></div>
+    </section>
+
+    <section class="card">
+      <h2>Evaluation on the untouched test set</h2>
+      <div class="scroll"><table id="metrics"></table></div>
+      <p class="small" id="econ"></p>
+    </section>
+
+    <section class="card">
+      <h2>Evaluation gates and next steps</h2>
+      <div class="scroll"><table id="gates"></table></div>
+      <p class="small" id="decision"></p>
+    </section>
+
+    <section class="card wide">
+      <h2>Model vs naive baseline</h2>
+      <img src="evaluation.png" alt="Bar chart comparing the XGBoost candidate with the naive majority baseline on accuracy, weighted F1, balanced accuracy, delayed recall and ROC-AUC">
+    </section>
+  </div>
+</main>
+<footer>The model runs entirely in your browser; predictions are identical to the project's FastAPI service (verified on all 47,567 in-scope orders). Returned orders are out of scope.</footer>
+
+<script src="predictor.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const pct = (v) => (v * 100).toFixed(1) + "%";
+const fmt = (v) => Number(v).toLocaleString("en-US");
+const GATE_NAMES = {
+  roc_auc: "Test ROC-AUC ≥ 0.60",
+  minority_recall: "Delayed recall ≥ 0.40",
+  weighted_f1_improvement_over_baseline: "Weighted F1 uplift ≥ 0.02 over baseline",
+  net_benefit_improvement_over_baseline_eur: "Net benefit better than baseline",
+  candidate_net_benefit_eur: "Net benefit > EUR 0",
+};
+const METRICS = [
+  ["roc_auc", "ROC-AUC (0.5 = chance)"], ["accuracy", "Accuracy"], ["balanced_accuracy", "Balanced accuracy"],
+  ["f1_weighted", "Weighted F1"], ["minority_recall", "Delayed recall"], ["minority_precision", "Delayed precision"],
+];
+let MODEL = null;
+const session = { total: 0, Delivered: 0, Delayed: 0 };
+
+function fillSelect(id, map, preferred) {
+  $(id).innerHTML = Object.keys(map).map((label) =>
+    `<option${label === preferred ? " selected" : ""}>${label}</option>`).join("");
+}
+
+function render(model) {
+  const f = model.facts;
+  fillSelect("region", model.category_maps.Customer_Region, "West");
+  fillSelect("category", model.category_maps.Product_Category, "Home");
+  fillSelect("mode", model.category_maps.Shipping_Mode, "Standard");
+
+  $("chipRows").textContent = `${fmt(f.scope_filter.rows_in_scope)} orders`;
+
+  const s = f.scope_filter;
+  const steps = [
+    ["1. Source data", `${fmt(s.source_rows)} orders`],
+    ["2. Scope", `${fmt(s.rows_removed)} Returned removed → ${fmt(s.rows_in_scope)} Delivered/Delayed`],
+    ["3. Features", "Region, category, mode, cost, order month & weekday (order-time only)"],
+    ["4. Split", `${fmt(f.split_rows.train)} train · ${fmt(f.split_rows.validation)} validation · ${fmt(f.split_rows.test)} test`],
+    ["5. Model", `XGBoost, ${model.trees.length} trees, chosen on validation ROC-AUC`],
+    ["6. Decision", `Delivered if P(Delivered) ≥ ${model.threshold}`],
+  ];
+  $("steps").innerHTML = steps.map(([t, d]) => `<div class="step"><b>${t}</b>${d}</div>`).join("");
+
+  $("metrics").innerHTML = "<thead><tr><th>Metric</th><th class='num'>XGBoost</th><th class='num'>Naive baseline</th></tr></thead><tbody>" +
+    METRICS.map(([k, name]) => `<tr><td>${name}</td><td class="num">${f.test_metrics[k].toFixed(3)}</td><td class="num">${f.baseline_test_metrics[k].toFixed(3)}</td></tr>`).join("") +
+    "</tbody>";
+  $("econ").textContent = `Estimated net benefit on the test set (scenario costs): XGBoost EUR ${fmt(f.candidate_net_benefit_eur)}, baseline EUR ${fmt(f.baseline_net_benefit_eur)}.`;
+
+  $("gates").innerHTML = "<thead><tr><th>Gate</th><th class='num'>Actual</th><th class='num'>Result</th></tr></thead><tbody>" +
+    Object.entries(f.business_goal_checks).map(([k, c]) => {
+      const actual = k.endsWith("_eur") ? "EUR " + fmt(Math.round(c.actual)) : c.actual.toFixed(3);
+      return `<tr><td>${GATE_NAMES[k] || k}</td><td class="num">${actual}</td><td class="num"><span class="pill ${c.passed ? "pass" : "fail"}">${c.passed ? "met" : "not met"}</span></td></tr>`;
+    }).join("") + "</tbody>";
+  const met = Object.values(f.business_goal_checks).filter((c) => c.passed).length;
+  const total = Object.keys(f.business_goal_checks).length;
+  $("decision").innerHTML =
+    `<div class="note"><b>Finding:</b> ${met} of ${total} gates are met. The model already catches ` +
+    `${pct(f.test_metrics.minority_recall)} of delayed orders and costs less than the baseline, but with ROC-AUC ` +
+    `${f.test_metrics.roc_auc.toFixed(3)} the order-time features (region, category, mode, cost, date) do not yet ` +
+    `separate delayed from delivered orders reliably.<br><b>Next iteration:</b> add pre-shipment operational data ` +
+    `such as carrier, warehouse, route distance, promised delivery date, and dispatch backlog.<br>` +
+    `<b>Deployment:</b> published as a live prototype to demonstrate the complete MLOps pipeline.</div>`;
+
+  $("submit").disabled = false;
+  $("submit").textContent = "Predict";
+}
+
+function showPrediction(record) {
+  const r = ShippingPredictor.predict(MODEL, record);
+  const delivered = r.prediction === 1;
+  $("placeholder").hidden = true;
+  $("result").style.display = "block";
+  $("result").className = "result " + (delivered ? "delivered" : "delayed");
+  $("resultLabel").textContent = delivered ? "✓ Delivered" : "⏱ Delayed";
+  $("probBar").style.width = pct(r.on_time_probability);
+  $("thrMark").style.left = pct(r.threshold);
+  $("probText").textContent = `P(Delivered) = ${pct(r.on_time_probability)} · threshold ${pct(r.threshold)} — below the threshold the order is flagged Delayed.`;
+
+  session.total += 1; session[r.prediction_label] += 1;
+  $("sTotal").textContent = session.total; $("sDelivered").textContent = session.Delivered; $("sDelayed").textContent = session.Delayed;
+  const row = document.createElement("tr");
+  row.innerHTML = `<td>${record.Customer_Region} · ${record.Product_Category} · ${record.Shipping_Mode} · ${record.Shipping_Cost} · ${record.Order_Date}</td>` +
+    `<td class="num">${pct(r.on_time_probability)}</td><td class="num">${r.prediction_label}</td>`;
+  $("history").tBodies[0].prepend(row);
+  while ($("history").tBodies[0].rows.length > 8) $("history").tBodies[0].lastChild.remove();
+}
+
+$("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  $("error").textContent = "";
+  const record = Object.fromEntries(new FormData(event.target).entries());
+  try { showPrediction(record); } catch (err) { $("error").textContent = "Prediction failed: " + err.message; }
+});
+
+$("random").addEventListener("click", () => {
+  const pick = (id) => { const o = $(id).options; o.selectedIndex = Math.floor(Math.random() * o.length); };
+  ["region", "category", "mode"].forEach(pick);
+  $("cost").value = 20 + Math.floor(Math.random() * 230);
+  const day = new Date(Date.UTC(2022, 0, 1) + Math.floor(Math.random() * 1460) * 86400000);
+  $("date").value = day.toISOString().slice(0, 10);
+  $("form").requestSubmit();
+});
+
+fetch("model.json")
+  .then((response) => { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
+  .then((model) => { MODEL = model; render(model); })
+  .catch((err) => { $("error").textContent = "Could not load the model: " + err.message; $("submit").textContent = "Model unavailable"; });
+</script>
+</body>
+</html>

@@ -1,6 +1,0 @@
-Model,Problem,Accuracy,F1 (weighted),Precision,Recall,ROC-AUC,Avg Precision
-Logistic Regression,multiclass,0.1916,0.2174,0.6782,0.1916,,
-Random Forest,multiclass,0.4662,0.539,0.6725,0.4662,,
-XGBoost (multiclass),multiclass,0.4659,0.5371,0.6697,0.4659,,
-XGBoost binary,binary,0.5779,0.6158,0.6788,0.5779,0.4951,0.8021
-XGBoost tuned,binary,0.547,0.5914,0.6774,0.547,0.4909,0.7973

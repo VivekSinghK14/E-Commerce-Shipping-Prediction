@@ -3,8 +3,8 @@
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 8012,
-        "total_eur": 16024.0,
+        "count": 8013,
+        "total_eur": 16026.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
@@ -13,8 +13,8 @@
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1988,
-        "total_eur": -159040.0,
+        "count": 1501,
+        "total_eur": -120080.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
@@ -25,54 +25,54 @@
     },
     "confusion_matrix": {
       "fn": 0,
-      "fp": 1988,
+      "fp": 1501,
       "tn": 0,
-      "tp": 8012
+      "tp": 8013
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -143016.0,
-    "net_benefit_per_1000_predictions_eur": -14301.6,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -104054.0,
+    "net_benefit_per_1000_predictions_eur": -10936.935043094387,
+    "positive_class": "Delivered"
   },
   "candidate": {
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 6721,
-        "total_eur": 13442.0,
+        "count": 4097,
+        "total_eur": 8194.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
-        "count": 303,
-        "total_eur": 9090.0,
+        "count": 712,
+        "total_eur": 21360.0,
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1685,
-        "total_eur": -134800.0,
+        "count": 789,
+        "total_eur": -63120.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
-        "count": 1291,
-        "total_eur": -12910.0,
+        "count": 3916,
+        "total_eur": -39160.0,
         "unit_cost_eur": 10.0
       }
     },
     "confusion_matrix": {
-      "fn": 1291,
-      "fp": 1685,
-      "tn": 303,
-      "tp": 6721
+      "fn": 3916,
+      "fp": 789,
+      "tn": 712,
+      "tp": 4097
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -125178.0,
-    "net_benefit_per_1000_predictions_eur": -12517.8,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -72726.0,
+    "net_benefit_per_1000_predictions_eur": -7644.103426529325,
+    "positive_class": "Delivered"
   },
-  "candidate_minus_baseline_eur": 17838.0,
+  "candidate_minus_baseline_eur": 31328.0,
   "decision_use": "Scenario analysis; replace assumed unit values with validated business data.",
-  "generated_at": "2026-08-18T22:37:48.390670+00:00",
-  "scenario": "Correct risk flags enable intervention; missed delayed/returned shipments are the costliest error; false alarms incur an intervention cost."
+  "generated_at": "2026-10-15T15:46:51.280408+00:00",
+  "scenario": "Correct delay flags enable intervention; missed delayed shipments are the costliest error; false alarms incur an intervention cost."
 }

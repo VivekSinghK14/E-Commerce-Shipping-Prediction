@@ -16,11 +16,13 @@
     "Delivery_Status": {
       "allowed": [
         "Delivered",
-        "Delayed",
-        "Returned"
+        "Delayed"
       ],
       "logical_type": "category",
-      "nullable": false
+      "nullable": false,
+      "removed_before_processing": [
+        "Returned"
+      ]
     },
     "Order_Date": {
       "logical_type": "date",

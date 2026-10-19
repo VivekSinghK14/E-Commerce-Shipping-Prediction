@@ -1,0 +1,20 @@
+{
+  "excluded_post_outcome_fields": {
+    "Cost_per_Day": "derived from post-outcome Delivery_Days",
+    "Delivery_Date": "not known when the order is placed",
+    "Delivery_Days": "derived from Ship_Date and Delivery_Date",
+    "Delivery_Status": "target label",
+    "Ship_Date": "not known when the order is placed"
+  },
+  "generated_at": "2026-10-15T15:32:10.829190+00:00",
+  "included_features": [
+    "Customer_Region",
+    "Product_Category",
+    "Shipping_Mode",
+    "Shipping_Cost",
+    "Order_Month",
+    "Order_DayOfWeek"
+  ],
+  "prediction_time": "when the order is placed",
+  "status": "passed"
+}

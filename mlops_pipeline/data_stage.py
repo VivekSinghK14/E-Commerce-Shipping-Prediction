@@ -9,10 +9,16 @@ from sklearn.preprocessing import StandardScaler
 from .config import (
     FEATURE_COLUMNS,
     NUMERIC_COLUMNS,
+    OUT_OF_SCOPE_OUTCOMES,
+    POSITIVE_OUTCOME,
     REQUIRED_RAW_COLUMNS,
+    TARGET_COLUMN,
+    TARGET_MAP,
+    TARGET_OUTCOMES,
     PipelineConfig,
 )
 from .io_utils import file_sha256, utc_now, write_json
+from .feature_engineering import CATEGORICAL_COLUMNS, build_order_time_features
 
 
 def _data_dictionary(frame: pd.DataFrame) -> pd.DataFrame:
@@ -25,8 +31,8 @@ def _data_dictionary(frame: pd.DataFrame) -> pd.DataFrame:
         "Delivery_Date": "Date delivered; used only for quality validation.",
         "Shipping_Mode": "Selected shipping mode (categorical predictor).",
         "Shipping_Cost": "Shipping charge (numeric predictor).",
-        "Delivery_Status": "Outcome: Delivered, Delayed, or Returned.",
-        "Delivery_Days": "Days from shipping to delivery (numeric predictor).",
+        "Delivery_Status": "Target outcome: Delivered (1) or Delayed (0).",
+        "Delivery_Days": "Post-outcome duration from shipping to delivery; quality check only, never a predictor.",
     }
     return pd.DataFrame(
         {
@@ -44,22 +50,39 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
     if not config.raw_data.exists():
         raise FileNotFoundError(f"Configured data source does not exist: {config.raw_data}")
 
-    raw = pd.read_csv(config.raw_data)
-    missing_columns = sorted(set(REQUIRED_RAW_COLUMNS) - set(raw.columns))
+    source = pd.read_csv(config.raw_data)
+    missing_columns = sorted(set(REQUIRED_RAW_COLUMNS) - set(source.columns))
     if missing_columns:
         raise ValueError(f"Raw CSV is missing required columns: {missing_columns}")
 
     config.reports.mkdir(parents=True, exist_ok=True)
     config.feature_store.mkdir(parents=True, exist_ok=True)
 
+    # Scope filter: the project predicts Delivered vs Delayed only. Returned
+    # orders are removed here, before any description, split, or model step.
+    out_of_scope = source[TARGET_COLUMN].isin(OUT_OF_SCOPE_OUTCOMES)
+    raw = source.loc[~out_of_scope].reset_index(drop=True)
+    scope_filter = {
+        "source_rows": int(len(source)),
+        "rows_in_scope": int(len(raw)),
+        "rows_removed": int(out_of_scope.sum()),
+        "removed_outcomes": {
+            outcome: int((source[TARGET_COLUMN] == outcome).sum())
+            for outcome in OUT_OF_SCOPE_OUTCOMES
+        },
+        "kept_outcomes": TARGET_OUTCOMES,
+        "reason": "Returned orders are outside the project scope; the model predicts Delivered vs Delayed only.",
+    }
+
     data_requirements = {
         "generated_at": utc_now(),
-        "business_question": "Can order-time attributes identify shipments at risk of not being delivered?",
+        "business_question": "Can order-time attributes identify shipments at risk of being delayed?",
         "unit_of_analysis": "one order",
         "required_columns": REQUIRED_RAW_COLUMNS,
         "minimum_rows": 1000,
-        "allowed_outcomes": ["Delivered", "Delayed", "Returned"],
-        "prediction_target": "Delivered (1) versus Delayed/Returned (0)",
+        "allowed_outcomes": TARGET_OUTCOMES,
+        "excluded_outcomes": OUT_OF_SCOPE_OUTCOMES,
+        "prediction_target": "Delivered (1) versus Delayed (0)",
     }
     write_json(config.reports / "data_requirements.json", data_requirements)
     input_contract = {
@@ -75,7 +98,8 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
             "Shipping_Cost": {"logical_type": "number", "minimum": 0, "nullable": False},
             "Delivery_Status": {
                 "logical_type": "category",
-                "allowed": ["Delivered", "Delayed", "Returned"],
+                "allowed": TARGET_OUTCOMES,
+                "removed_before_processing": OUT_OF_SCOPE_OUTCOMES,
                 "nullable": False,
             },
             "Delivery_Days": {"logical_type": "integer", "minimum_exclusive": 0, "nullable": False},
@@ -87,6 +111,7 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         "generated_at": utc_now(),
         "source": str(config.raw_data),
         "source_sha256": file_sha256(config.raw_data),
+        "scope_filter": scope_filter,
         "rows": int(len(raw)),
         "columns": int(len(raw.columns)),
         "column_names": list(raw.columns),
@@ -105,9 +130,7 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         "Customer_Region": int((raw["Customer_Region"].astype(str).str.strip() == "").sum()),
         "Product_Category": int((raw["Product_Category"].astype(str).str.strip() == "").sum()),
         "Shipping_Mode": int((raw["Shipping_Mode"].astype(str).str.strip() == "").sum()),
-        "Delivery_Status": int(
-            (~raw["Delivery_Status"].isin(["Delivered", "Delayed", "Returned"])).sum()
-        ),
+        "Delivery_Status": int((~raw[TARGET_COLUMN].isin(TARGET_OUTCOMES)).sum()),
     }
     quality_checks = {
         "missing_values": int(raw.isna().sum().sum()),
@@ -138,6 +161,7 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
     )
     quality_report = {
         "generated_at": utc_now(),
+        "scope_filter": scope_filter,
         "checks": quality_checks,
         "blocking_defects": int(blocking_defects),
         "data_sufficient": blocking_defects == 0 and len(raw) >= 1000,
@@ -164,25 +188,15 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
     }
     write_json(config.reports / "data_exploration_report.json", exploration)
 
-    prepared = raw.copy()
-    prepared["Order_Month"] = dates["Order_Date"].dt.month
-    prepared["Order_DayOfWeek"] = dates["Order_Date"].dt.dayofweek
-    prepared["Cost_per_Day"] = prepared["Shipping_Cost"] / prepared["Delivery_Days"]
-
     category_maps = {}
-    for column in ["Customer_Region", "Product_Category", "Shipping_Mode"]:
-        labels = sorted(prepared[column].unique().tolist())
+    for column in CATEGORICAL_COLUMNS:
+        labels = sorted(raw[column].astype(str).unique().tolist())
         category_maps[column] = {label: index for index, label in enumerate(labels)}
-        prepared[column] = prepared[column].map(category_maps[column])
 
-    multiclass_map = {"Delayed": 0, "Delivered": 1, "Returned": 2}
     targets = pd.DataFrame(
-        {
-            "multiclass_target": prepared["Delivery_Status"].map(multiclass_map).astype(int),
-            "binary_target": (prepared["Delivery_Status"] == "Delivered").astype(int),
-        }
+        {"binary_target": (raw[TARGET_COLUMN] == POSITIVE_OUTCOME).astype(int)}
     )
-    features = prepared[FEATURE_COLUMNS].copy()
+    features = build_order_time_features(raw, category_maps)
 
     train_idx, test_idx = train_test_split(
         features.index,
@@ -209,7 +223,7 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         )
 
         # End-of-pipeline contract: exact columns, numeric, finite, non-null,
-        # aligned row counts, and binary/multiclass target domains.
+        # aligned row counts, and the binary target domain.
         if list(x_split.columns) != FEATURE_COLUMNS:
             raise ValueError(f"{split} feature output has incorrect column order")
         if not all(pd.api.types.is_numeric_dtype(x_split[column]) for column in x_split):
@@ -219,8 +233,8 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         split_targets = targets.loc[indices]
         if not set(split_targets["binary_target"]).issubset({0, 1}):
             raise ValueError(f"{split} binary target violates its contract")
-        if not set(split_targets["multiclass_target"]).issubset({0, 1, 2}):
-            raise ValueError(f"{split} multiclass target violates its contract")
+        if list(split_targets.columns) != ["binary_target"]:
+            raise ValueError(f"{split} target output must contain only binary_target")
 
     joblib.dump(scaler, config.feature_store / "scaler.joblib")
     preparation = {
@@ -228,25 +242,61 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         "feature_columns": FEATURE_COLUMNS,
         "numeric_scaled_columns": NUMERIC_COLUMNS,
         "category_maps": category_maps,
-        "target_maps": {
-            "multiclass": multiclass_map,
-            "binary": {"Delivered": 1, "Delayed_or_Returned": 0},
-        },
+        "target_maps": {"binary": TARGET_MAP},
+        "scope_filter": scope_filter,
         "split_rows": {name: len(index) for name, index in split_indices.items()},
         "split_policy": "60% train / 20% validation / 20% untouched test, stratified",
         "leakage_controls": [
-            "Order_ID and outcome/date-after-order fields excluded from predictors",
+            "Order_ID, delivery outcome, ship/delivery dates, and post-outcome Delivery_Days excluded from predictors",
+            "Cost_per_Day excluded because it is derived from post-outcome Delivery_Days",
             "scaler fit on training rows only",
             "threshold and model selection use validation, never test",
         ],
     }
     write_json(config.reports / "data_preparation_report.json", preparation)
     write_json(config.feature_store / "feature_manifest.json", preparation)
+    write_json(
+        config.reports / "feature_leakage_assessment.json",
+        {
+            "generated_at": utc_now(),
+            "prediction_time": "when the order is placed",
+            "included_features": FEATURE_COLUMNS,
+            "excluded_post_outcome_fields": {
+                "Delivery_Status": "target label",
+                "Ship_Date": "not known when the order is placed",
+                "Delivery_Date": "not known when the order is placed",
+                "Delivery_Days": "derived from Ship_Date and Delivery_Date",
+                "Cost_per_Day": "derived from post-outcome Delivery_Days",
+            },
+            "status": "passed",
+        },
+    )
+    cost_per_day_review = {
+        "generated_at": utc_now(),
+        "feature": "Cost_per_Day = Shipping_Cost / Delivery_Days",
+        "decision": "EXCLUDED_FROM_ALL_MODEL_SELECTION_AND_EVALUATION",
+        "reason": (
+            "Delivery_Days is only known after delivery, so Cost_per_Day is unavailable "
+            "at the order-time prediction point and would leak future outcome information."
+        ),
+        "scientific_interpretation": (
+            "A high feature importance or apparent score improvement would not be valid evidence; "
+            "it would measure access to post-outcome information."
+        ),
+    }
+    write_json(config.reports / "cost_per_day_leakage_review.json", cost_per_day_review)
+    (config.reports / "cost_per_day_leakage_review.md").write_text(
+        "# Cost_per_Day leakage review\n\n"
+        "**Decision: EXCLUDED FROM ALL MODEL SELECTION AND EVALUATION.**\n\n"
+        f"{cost_per_day_review['reason']}\n\n"
+        f"{cost_per_day_review['scientific_interpretation']}\n",
+        encoding="utf-8",
+    )
     output_contract = {
         "format": "CSV feature/target pairs plus Joblib scaler and JSON manifest",
         "feature_columns_in_order": FEATURE_COLUMNS,
         "feature_types": {column: "numeric and finite" for column in FEATURE_COLUMNS},
-        "targets": {"binary_target": [0, 1], "multiclass_target": [0, 1, 2]},
+        "targets": {"binary_target": {"0": "Delayed", "1": "Delivered"}},
         "splits": ["train", "validation", "test"],
         "validation_status": "passed",
     }
@@ -257,6 +307,7 @@ def collect_and_prepare(config: PipelineConfig) -> dict:
         "source": str(config.raw_data),
         "steps": [
             "schema and provenance validation",
+            "scope filter: remove Returned orders (Delivered vs Delayed only)",
             "description and exploration",
             "data-quality gate",
             "leakage-safe feature derivation",

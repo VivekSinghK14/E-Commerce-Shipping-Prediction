@@ -8,37 +8,37 @@
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 8006,
-        "total_eur": 16012.0,
+        "count": 7992,
+        "total_eur": 15984.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
-        "count": 6,
-        "total_eur": 180.0,
+        "count": 2,
+        "total_eur": 60.0,
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1982,
-        "total_eur": -158560.0,
+        "count": 1499,
+        "total_eur": -119920.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
-        "count": 6,
-        "total_eur": -60.0,
+        "count": 21,
+        "total_eur": -210.0,
         "unit_cost_eur": 10.0
       }
     },
     "confusion_matrix": {
-      "fn": 6,
-      "fp": 1982,
-      "tn": 6,
-      "tp": 8006
+      "fn": 21,
+      "fp": 1499,
+      "tn": 2,
+      "tp": 7992
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -142428.0,
-    "net_benefit_per_1000_predictions_eur": -14242.800000000001,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -104086.0,
+    "net_benefit_per_1000_predictions_eur": -10940.298507462687,
+    "positive_class": "Delivered"
   },
   "estimator": "XGBClassifier",
   "feature_columns": [
@@ -46,15 +46,13 @@
     "Product_Category",
     "Shipping_Mode",
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day"
+    "Order_DayOfWeek"
   ],
-  "generated_at": "2026-08-18T22:37:45.986870+00:00",
-  "inference_ms_per_1000": 5.179130000760779,
-  "mlflow_run_id": "1cb58d822baa482e8eb180e64948b515",
-  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "generated_at": "2026-10-15T15:46:43.810086+00:00",
+  "inference_ms_per_1000": 9.948570526578747,
+  "mlflow_run_id": "236883d7e42843869ac37337d14fea9f",
+  "mlflow_tracking_uri": "sqlite:///C:/Users/Vivek Kumar Singh/Downloads/E-Commerce-Shipping-Prediction-main/E-Commerce-Shipping-Prediction-main/artifacts/mlflow/tracking.db",
   "name": "xgboost",
   "parameters": {
     "base_score": null,
@@ -98,15 +96,23 @@
     "validate_parameters": null,
     "verbosity": null
   },
-  "training_rows": 30000,
-  "training_seconds": 0.5263783000409603,
+  "training_rows": 28539,
+  "training_seconds": 9.610099800047465,
   "validation_metrics": {
-    "accuracy": 0.8012,
-    "balanced_accuracy": 0.5011346159834694,
-    "f1_weighted": 0.7139047111111111,
-    "minority_recall": 0.0030181086519114686,
-    "precision_weighted": 0.7416113736483781,
-    "recall_weighted": 0.8012,
-    "roc_auc": 0.4826666564539509
+    "accuracy": 0.840235442505781,
+    "average_precision_delayed": 0.15989873008416008,
+    "balanced_accuracy": 0.4993558518706236,
+    "brier_score": 0.13653244835674366,
+    "f1_macro": 0.45789368879164327,
+    "f1_weighted": 0.769509395948898,
+    "fn": 21,
+    "fp": 1499,
+    "minority_precision": 0.08695652173913043,
+    "minority_recall": 0.0013324450366422385,
+    "precision_weighted": 0.7229299694372835,
+    "recall_weighted": 0.840235442505781,
+    "roc_auc": 0.5077864393079434,
+    "tn": 2,
+    "tp": 7992
   }
 }

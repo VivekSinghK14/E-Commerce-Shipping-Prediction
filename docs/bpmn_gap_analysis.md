@@ -9,10 +9,12 @@ the images were not executed as instructions.
 |---|---|---|
 | Identification of data sources and requirements | CSV was opened from a developer-specific absolute path | Configured, portable raw source plus required-schema validation in `mlops_pipeline/data_stage.py` |
 | Data acquisition | Notebook-only `read_csv` | Reproducible pipeline entrypoint with source path and SHA-256 provenance |
+| Target scope | Three classes (Delivered, Delayed, Returned) mixed into one target | Binary Delivered (1) vs Delayed (0); the 2,433 `Returned` rows are removed at ingestion and the removal is recorded as `scope_filter` |
 | Data description and dictionary | `head`, `info`, and `describe` displayed transiently | `data_description_report.json` and `data_dictionary.csv` |
 | Exploration | A few notebook plots only | Reproducible distributions, numeric summaries, and date ranges in `data_exploration_report.json` |
 | Data-quality assessment and sufficiency gate | Null/duplicate checks only; forward-fill was applied even though no values were missing | Schema, missing, ID uniqueness, category, chronology, delivery-day consistency, range checks, and a blocking quality gate in `data_quality_report.json` |
 | Data preparation | Category codes and scaling were notebook state | Deterministic category maps, engineered calendar/cost features, explicit target maps, and serialized scaler |
+| Post-outcome leakage | `Delivery_Days` and derived `Cost_per_Day` were treated as predictors | Both are excluded; `cost_per_day_leakage_review.json/.md` records why an apparent uplift would be invalid |
 | Leakage-safe split | One train/test split; the test set was later used for threshold tuning | Stratified train/validation/test splits; scaler fits training data only |
 | Feature store | Loose files under `processed/` | Versionable feature-store directory with split files, scaler, and manifest |
 | Data pipeline architecture/development | No raw-to-feature executable pipeline | `scripts/run_bpmn_pipeline.py` and `analytical_pipeline_architecture.json` |
@@ -28,7 +30,7 @@ would leak future information.
 |---|---|---|
 | Hypothesis definition/account | Informal notebook narrative | Explicit problem and business hypotheses below |
 | Analytical model test design | Models trained ad hoc | Frozen split roles, selection metric, baseline, candidate list, and seed in `analytical_model_test_design.json` |
-| Analytical model selection | Comparisons mixed binary and multiclass scores | Like-for-like binary candidates selected on validation ROC-AUC |
+| Analytical model selection | Comparisons mixed two-class and three-class scores | Like-for-like binary candidates are compared on validation ROC-AUC; the report distinguishes the best experimental candidate from the naive baseline and from a deployable model |
 | Model development | Hard-coded local paths and notebook variables | Portable code fits dummy, logistic regression, random forest, and XGBoost candidates |
 | Model metadata store | Old MLflow CSV referred to another local filesystem | One JSON metadata record per fresh candidate, including parameters, metrics, timing, rows, and features |
 | Model registry | `best_model.pkl` was called production without a decision gate | Candidate model and manifest are staged in `artifacts/model_registry`; status becomes approved or rejected after evaluation |
@@ -37,7 +39,7 @@ would leak future information.
 | Pipeline architecture | Deployment script began from already-processed files | One raw-data-to-checkpoint entrypoint and a machine-readable architecture report |
 
 Hypothesis under test: the attributes known at or near order time contain enough
-signal to discriminate Delivered from Delayed/Returned shipments. Null
+signal to discriminate Delivered from Delayed shipments. Null
 hypothesis: the candidate cannot discriminate better than chance or provide a
 material improvement over the class-prior baseline.
 

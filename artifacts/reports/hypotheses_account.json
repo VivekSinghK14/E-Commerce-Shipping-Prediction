@@ -4,7 +4,7 @@
     "minimum_test_roc_auc": 0.6,
     "minimum_weighted_f1_uplift_over_baseline": 0.02
   },
-  "business_hypothesis": "Attributes available at or near order time contain enough signal to identify shipments that will be delayed or returned.",
-  "generated_at": "2026-08-18T22:37:06.181106+00:00",
+  "business_hypothesis": "Attributes available at or near order time contain enough signal to identify shipments that will be delayed (Delivered vs Delayed).",
+  "generated_at": "2026-10-15T15:32:16.685055+00:00",
   "null_hypothesis": "The available predictors provide no useful discrimination beyond chance/baseline."
 }

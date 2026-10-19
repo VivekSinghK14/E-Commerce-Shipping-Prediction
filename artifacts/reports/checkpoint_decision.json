@@ -1,27 +1,28 @@
 {
+  "best_experimental_candidate": "xgboost",
   "business_goal_checks": {
     "candidate_net_benefit_eur": {
-      "actual": -125178.0,
+      "actual": -72726.0,
       "passed": false,
       "required": 0.0
     },
     "minority_recall": {
-      "actual": 0.15241448692152917,
-      "passed": false,
+      "actual": 0.4743504330446369,
+      "passed": true,
       "required": 0.4
     },
     "net_benefit_improvement_over_baseline_eur": {
-      "actual": 17838.0,
+      "actual": 31328.0,
       "passed": true,
       "required": 0.0
     },
     "roc_auc": {
-      "actual": 0.499118117341091,
+      "actual": 0.4890412506725206,
       "passed": false,
       "required": 0.6
     },
     "weighted_f1_improvement_over_baseline": {
-      "actual": -0.02316712307090696,
+      "actual": -0.19842656741501408,
       "passed": false,
       "required": 0.02
     }
@@ -31,58 +32,82 @@
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 6721,
-        "total_eur": 13442.0,
+        "count": 4097,
+        "total_eur": 8194.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
-        "count": 303,
-        "total_eur": 9090.0,
+        "count": 712,
+        "total_eur": 21360.0,
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1685,
-        "total_eur": -134800.0,
+        "count": 789,
+        "total_eur": -63120.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
-        "count": 1291,
-        "total_eur": -12910.0,
+        "count": 3916,
+        "total_eur": -39160.0,
         "unit_cost_eur": 10.0
       }
     },
     "confusion_matrix": {
-      "fn": 1291,
-      "fp": 1685,
-      "tn": 303,
-      "tp": 6721
+      "fn": 3916,
+      "fp": 789,
+      "tn": 712,
+      "tp": 4097
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -125178.0,
-    "net_benefit_per_1000_predictions_eur": -12517.8,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -72726.0,
+    "net_benefit_per_1000_predictions_eur": -7644.103426529325,
+    "positive_class": "Delivered"
+  },
+  "candidate_minus_naive_baseline": {
+    "accuracy": -0.33676686987597226,
+    "average_precision_delayed": -0.005330477107644699,
+    "balanced_accuracy": -0.007177709972128077,
+    "f1_macro": -0.023389796799919094,
+    "f1_weighted": -0.19842656741501408,
+    "minority_precision": 0.15384615384615385,
+    "minority_recall": 0.4743504330446369,
+    "roc_auc": -0.010958749327479422
   },
   "candidate_test_metrics": {
-    "accuracy": 0.7024,
-    "balanced_accuracy": 0.495640593435802,
-    "f1_weighted": 0.6896037407976251,
-    "minority_recall": 0.15241448692152917,
-    "precision_weighted": 0.6783872715641065,
-    "recall_weighted": 0.7024,
-    "roc_auc": 0.499118117341091
+    "accuracy": 0.5054656295984864,
+    "average_precision_delayed": 0.1524370234178966,
+    "balanced_accuracy": 0.4928222900278719,
+    "brier_score": 0.13746580882133036,
+    "f1_macro": 0.43379055351673523,
+    "f1_weighted": 0.5716777309005947,
+    "fn": 3916,
+    "fp": 789,
+    "minority_precision": 0.15384615384615385,
+    "minority_recall": 0.4743504330446369,
+    "precision_weighted": 0.730499215492376,
+    "recall_weighted": 0.5054656295984864,
+    "roc_auc": 0.4890412506725206,
+    "tn": 712,
+    "tp": 4097
   },
   "checkpoint_decision": "RETURN_TO_BUSINESS_UNDERSTANDING",
-  "generated_at": "2026-08-18T22:37:48.168550+00:00",
-  "mlflow_evaluation_run_id": "527152cad7c8430aa10e543128a70cd7",
-  "model": "random_forest",
-  "model_sha256": "0a01830c2dcee6c40fa16da24e25a1c1c2f12a01b86ad88ed203449ef72a92c8",
+  "decision_authority": "automated business-goal gate",
+  "decision_owner_role": "strategy_and_project_management",
+  "deployment_model": null,
+  "final_selected_model": "xgboost",
+  "final_selection_status": "SELECTED_FOR_PROTOTYPE_NOT_APPROVED_FOR_DEPLOYMENT",
+  "generated_at": "2026-10-15T15:46:50.888934+00:00",
+  "human_review_required": true,
+  "mlflow_evaluation_run_id": "abd77c18479045b99b8cb9b3dd73a0b2",
+  "model": "xgboost",
+  "model_sha256": "b7dc6b7f25552b762bca4c0b9ef9e2819313d9389a0a7ca22314d29c10724444",
   "naive_baseline_business_economics": {
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 8012,
-        "total_eur": 16024.0,
+        "count": 8013,
+        "total_eur": 16026.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
@@ -91,8 +116,8 @@
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1988,
-        "total_eur": -159040.0,
+        "count": 1501,
+        "total_eur": -120080.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
@@ -103,27 +128,35 @@
     },
     "confusion_matrix": {
       "fn": 0,
-      "fp": 1988,
+      "fp": 1501,
       "tn": 0,
-      "tp": 8012
+      "tp": 8013
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -143016.0,
-    "net_benefit_per_1000_predictions_eur": -14301.6,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -104054.0,
+    "net_benefit_per_1000_predictions_eur": -10936.935043094387,
+    "positive_class": "Delivered"
   },
   "naive_baseline_test_metrics": {
-    "accuracy": 0.8012,
+    "accuracy": 0.8422324994744587,
+    "average_precision_delayed": 0.1577675005255413,
     "balanced_accuracy": 0.5,
-    "f1_weighted": 0.7127708638685321,
+    "brier_score": 0.1328769165785073,
+    "f1_macro": 0.4571803503166543,
+    "f1_weighted": 0.7701042983156088,
+    "fn": 0,
+    "fp": 1501,
+    "minority_precision": 0.0,
     "minority_recall": 0.0,
-    "precision_weighted": 0.64192144,
-    "recall_weighted": 0.8012,
-    "roc_auc": 0.5
+    "precision_weighted": 0.709355583170994,
+    "recall_weighted": 0.8422324994744587,
+    "roc_auc": 0.5,
+    "tn": 0,
+    "tp": 8013
   },
-  "net_benefit_improvement_over_baseline_eur": 17838.0,
+  "net_benefit_improvement_over_baseline_eur": 31328.0,
   "next_action": "Revisit target, available predictors, and business framing; do not deploy",
   "test_set_policy": "Used once after model and threshold were frozen on validation",
-  "threshold": 0.52
+  "threshold": 0.85
 }

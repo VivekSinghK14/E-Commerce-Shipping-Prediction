@@ -3,7 +3,7 @@
 ## Pros
 
 - The pipeline is reproducible and the test set is isolated from selection.
-- The chosen threshold identifies some at-risk shipments.
+- The chosen threshold identifies some delayed shipments.
 - All business assumptions and failed gates are explicit and auditable.
 
 ## Cons

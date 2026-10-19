@@ -9,7 +9,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY deployment ./deployment
-COPY processed ./processed
+COPY mlops_pipeline ./mlops_pipeline
+COPY artifacts ./artifacts
 
 EXPOSE 8000
 

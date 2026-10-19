@@ -9,25 +9,49 @@
       "serving_component": true,
       "smoke_test": true
     },
-    "deployment_executed": false,
-    "generated_at": "2026-08-18T22:37:48.911038+00:00",
+    "deployment_executed": true,
+    "deployment_test_status": "PASSED",
+    "deployment_validation_executed": true,
+    "generated_at": "2026-10-15T18:19:25.910159+00:00",
     "impact_assessment": {
       "managerial": "A prediction API could support operations, but weak discrimination could waste intervention effort.",
       "risk": "The evaluated candidate does not meet predictive or absolute economic gates.",
       "technical": "FastAPI, Docker, CI, monitoring, MLflow, registry, and retraining components are available."
     },
-    "production_business_integration": "BLOCKED_BY_EVALUATION_GATE",
-    "prototype_deployment_status": "AVAILABLE_FOR_TECHNICAL_DEMONSTRATION",
-    "reason": "The process model requires return to Business Understanding when business goals fail.",
-    "rollback_policy": "A candidate never replaces the champion until all gates and tests pass."
+    "override": {
+      "actor": "Vivek Kumar Singh (project owner)",
+      "approved_at": "2026-10-15T18:19:25.869391+00:00",
+      "candidate_net_benefit_eur": -72726.0,
+      "evaluation_decision": "RETURN_TO_BUSINESS_UNDERSTANDING",
+      "failed_business_gates": [
+        "candidate_net_benefit_eur",
+        "roc_auc",
+        "weighted_f1_improvement_over_baseline"
+      ],
+      "model": "xgboost",
+      "rationale": "Course requirement: publish the evaluated model as a live prototype to demonstrate the complete MLOps pipeline end to end.",
+      "scope": "Prototype demonstration only; not evidence that the model creates business value.",
+      "test_metrics": {
+        "accuracy": 0.5054656295984864,
+        "balanced_accuracy": 0.4928222900278719,
+        "f1_weighted": 0.5716777309005947,
+        "minority_recall": 0.4743504330446369,
+        "roc_auc": 0.4890412506725206
+      }
+    },
+    "production_business_integration": "DEPLOYED_BY_MANAGEMENT_OVERRIDE",
+    "prototype_deployment_status": "PREDICTION_SERVING_AVAILABLE_BY_OVERRIDE",
+    "reason": "Evaluation gates failed; deployed by override of Vivek Kumar Singh (project owner): Course requirement: publish the evaluated model as a live prototype to demonstrate the complete MLOps pipeline end to end.",
+    "rollback_policy": "A candidate never replaces the champion until all gates and tests pass.",
+    "smoke_test_report": "C:\\Users\\Vivek Kumar Singh\\Downloads\\E-Commerce-Shipping-Prediction-main\\E-Commerce-Shipping-Prediction-main\\artifacts\\reports\\deployment_smoke_test.json"
   },
   "evaluation_decision": "RETURN_TO_BUSINESS_UNDERSTANDING",
-  "final_status": "TECHNICAL_PROTOTYPE_COMPLETE_BUSINESS_DEPLOYMENT_BLOCKED",
-  "generated_at": "2026-08-18T22:37:48.911100+00:00",
+  "final_status": "DEPLOYED_BY_OVERRIDE_EVALUATION_GATES_FAILED",
+  "generated_at": "2026-10-15T18:19:25.910189+00:00",
   "utilization": {
     "continuous_training": "Implemented but promotion remains gated by data, model, business, and test checks.",
     "domain_user_interface": "FastAPI Swagger UI at /docs for prototype demonstration",
-    "generated_at": "2026-08-18T22:37:48.911082+00:00",
+    "generated_at": "2026-10-15T18:19:25.910182+00:00",
     "maintenance": "Versioned retraining checks data hash, model age, observed performance, and manual triggers.",
     "monitoring": [
       "/health",
@@ -36,7 +60,7 @@
       "/pipeline/status",
       "prediction JSONL log"
     ],
-    "production_utilization_status": "NOT_STARTED_MODEL_NOT_APPROVED",
+    "production_utilization_status": "ACTIVE_UNDER_OVERRIDE_MODEL_FAILED_EVALUATION",
     "support": "Validation errors and runtime prediction events are counted and logged."
   }
 }

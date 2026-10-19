@@ -1,9 +1,10 @@
 {
-  "destination": "C:\\Users\\Vivek Kumar Singh\\Downloads\\mlops-main\\mlops-main\\artifacts\\feature_store",
-  "generated_at": "2026-08-18T22:37:05.950566+00:00",
-  "source": "C:\\Users\\Vivek Kumar Singh\\Downloads\\mlops-main\\mlops-main\\50K Records.csv",
+  "destination": "C:\\Users\\Vivek Kumar Singh\\Downloads\\E-Commerce-Shipping-Prediction-main\\E-Commerce-Shipping-Prediction-main\\artifacts\\feature_store",
+  "generated_at": "2026-10-15T15:32:10.855325+00:00",
+  "source": "C:\\Users\\Vivek Kumar Singh\\Downloads\\E-Commerce-Shipping-Prediction-main\\E-Commerce-Shipping-Prediction-main\\50K Records.csv",
   "steps": [
     "schema and provenance validation",
+    "scope filter: remove Returned orders (Delivered vs Delayed only)",
     "description and exploration",
     "data-quality gate",
     "leakage-safe feature derivation",

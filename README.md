@@ -2,6 +2,24 @@
 
 Development and Operationalization of Data Science Solutions - E-Commerce Shipping Prediction.
 
+## Problem scope: Delivered vs Delayed
+
+The model answers one binary question: **will an order be Delivered (1) or
+Delayed (0)?** The raw CSV also contains `Returned` orders. Returns are a
+different business process (reverse logistics) and are **removed completely**
+at the very first pipeline step, before description, quality checks, splitting,
+modeling, evaluation, or serving.
+
+| Source outcome | Rows | Used? |
+|---|---:|---|
+| Delivered | 40,062 | yes, class 1 |
+| Delayed | 7,505 | yes, class 0 |
+| Returned | 2,433 | no, removed at ingestion |
+| **Modeled rows** | **47,567** | 60% train / 20% validation / 20% test |
+
+The removal is recorded in `data_preparation_report.json` and
+`data_quality_report.json` (`scope_filter`), and enforced by tests.
+
 ## BPMN stages 3–5 (authoritative workflow)
 
 The reproducible workflow from the raw `50K Records.csv` through the evaluation
@@ -33,9 +51,22 @@ correct checkpoint is `RETURN_TO_BUSINESS_UNDERSTANDING`; the candidate is not
 promoted. See [the BPMN gap analysis](docs/bpmn_gap_analysis.md) for the exact
 diagram-to-code mapping and explanation.
 
-The older notebooks remain as historical exploration. They contain absolute
-machine-specific paths and reuse the test set for threshold selection, so they
-are not the authoritative reproducible pipeline.
+The project's final selected algorithm is **XGBoost** (highest validation
+ROC-AUC among the non-baseline candidates). Its status is
+`SELECTED_FOR_PROTOTYPE_NOT_APPROVED_FOR_DEPLOYMENT`: untouched-test ROC-AUC is
+about 0.49 (chance level), so evaluation does not approve it. It is
+nevertheless **deployed through a recorded management override** for the
+course demonstration; see [Deployment by management override](#deployment-by-management-override).
+
+### Notebooks
+
+The notebooks walk through the same Delivered-vs-Delayed process and read the
+pipeline's feature store, so their numbers match the reports. Run the pipeline
+first, then the notebooks in this order:
+
+1. `E- commerce.ipynb`: data understanding, Returned removal, EDA, leakage review
+2. `modelling.ipynb/Models.ipynb`: candidate training and validation-only selection
+3. `evalaution/stage4_evaluation.ipynb`: untouched-test evaluation and checkpoint
 
 ### MLflow and generated evidence
 
@@ -45,14 +76,15 @@ business reports are attached to a separate MLflow evaluation run. To inspect
 the runs locally:
 
 ```powershell
-mlflow ui --backend-store-uri artifacts/mlflow
+mlflow ui --backend-store-uri sqlite:///artifacts/mlflow/tracking.db
 ```
 
 Important generated reports include:
 
+- `artifacts/reports/naive_vs_best_candidate.png`
 - `artifacts/reports/cost_benefit_analysis.md`
 - `artifacts/reports/model_business_factors.csv`
-- `artifacts/reports/cost_per_day_ablation.md`
+- `artifacts/reports/cost_per_day_leakage_review.md`
 - `artifacts/reports/business_objective_assessment.md`
 - `artifacts/reports/input_data_contract.json`
 - `artifacts/reports/output_data_contract.json`
@@ -73,26 +105,69 @@ every gate passes; otherwise the existing champion is preserved. See
 
 ## Deployment
 
-This project includes a FastAPI technical demonstration using the legacy
-`processed/best_model.pkl` artifact. The corrected evaluation does not approve
-this model or the current candidate for business deployment. The API exposes
-this status under `deployment_approval`.
+**Live demo:** https://huggingface.co/spaces/VivekSinghK14/shipping-delay-predictor
+
+The live demo is a free static Hugging Face Space. The deployed XGBoost
+champion is exported by `python scripts/export_browser_model.py` to
+`deployment/static_space/model.json` and evaluated in the browser by
+`predictor.js`; `tests/test_browser_model.py` checks that its predictions match
+the Python model on all 47,567 in-scope orders. Republish after retraining:
+
+```powershell
+python scripts/export_browser_model.py
+python -c "from huggingface_hub import HfApi; HfApi().upload_folder(repo_id='VivekSinghK14/shipping-delay-predictor', repo_type='space', folder_path='deployment/static_space')"
+```
+
+The full FastAPI service (with server-side monitoring) runs locally or in
+Docker as described below.
+
+## Deployment by management override
+
+The evaluation result is unchanged: the model **failed** its business gates
+(`RETURN_TO_BUSINESS_UNDERSTANDING`). Because the course requires a deployed,
+demonstrable prototype, the project owner recorded an explicit, audited
+deployment override:
+
+```powershell
+python scripts/deploy_with_override.py --actor "Vivek Kumar Singh (project owner)" `
+  --reason "Course requirement: the prototype must be deployed and demonstrated end to end even though the evaluation gates failed."
+```
+
+The override:
+
+- copies the exact evaluated candidate bundle (SHA-256 checked) to `champion_bundle.joblib`;
+- writes `champion_manifest.json` with `promotion_status = approved_by_override`, the actor, rationale, failed gates, and test metrics;
+- writes `artifacts/reports/deployment_override.json` and appends to `artifacts/lifecycle_decision_log.jsonl`;
+- sets the lifecycle status to `DEPLOYED_BY_OVERRIDE_EVALUATION_GATES_FAILED`.
+
+The API then serves predictions, and every response contains
+`"deployment_basis": "DEPLOYED_BY_MANAGEMENT_OVERRIDE"` plus a warning that
+the model failed evaluation. Without an override, prediction endpoints return
+HTTP 503. To withdraw the deployment:
+
+```powershell
+python scripts/manage_lifecycle.py discontinue --actor "<name>" --reason "<why>"
+```
+
+### Serving component
+
+This project includes a FastAPI serving implementation backed only by an
+approved registry bundle (passing evaluation or recorded override). The current
+model is served under the override described above.
 
 The prototype predicts:
 
-- `1`: Delivered / On Time
-- `0`: Not On Time, meaning Delayed or Returned
+- `1`: Delivered
+- `0`: Delayed
 
-The service uses `processed/scaler.pkl` when it contains a fitted scaler. In this
-checkout, `processed/scaler.pkl` contains only the numeric column names, so the API
-falls back to embedded scaler parameters reproduced exactly from the original
-notebook preprocessing and the saved `processed/X_train.csv`.
+The registered bundle contains the fitted scaler, category mappings, feature
+order, decision threshold, and trained estimator.
 
 The model receives the same feature order used during training:
 
 ```text
 Customer_Region, Product_Category, Shipping_Mode, Shipping_Cost,
-Delivery_Days, Order_Month, Order_DayOfWeek, Cost_per_Day
+Order_Month, Order_DayOfWeek
 ```
 
 ### Run Locally
@@ -124,7 +199,6 @@ Invoke-RestMethod -Method Post `
     "Product_Category": "Home",
     "Shipping_Mode": "Standard",
     "Shipping_Cost": 122,
-    "Delivery_Days": 10,
     "Order_Date": "2024-05-12"
   }'
 ```

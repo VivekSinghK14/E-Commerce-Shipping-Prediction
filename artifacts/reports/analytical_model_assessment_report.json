@@ -1,64 +1,46 @@
 {
-  "cost_per_day_ablation": {
-    "all_feature_importances_or_coefficients": {
-      "Cost_per_Day": 0.25347379539687265,
-      "Customer_Region": 0.07633081079924589,
-      "Delivery_Days": 0.0892353582858856,
-      "Order_DayOfWeek": 0.0988373961372501,
-      "Order_Month": 0.1275640333860918,
-      "Product_Category": 0.09055910656917396,
-      "Shipping_Cost": 0.2394591611621358,
-      "Shipping_Mode": 0.02454033826334421
-    },
-    "conclusion": "Cost_per_Day does not provide a material validated improvement; keep only if its business interpretability is useful.",
-    "controlled_comparison": "same algorithm, split, seed, and settings; only feature set differs",
-    "cost_per_day_formula": "Shipping_Cost / Delivery_Days",
-    "delta_with_minus_without": {
-      "accuracy": 0.0027999999999999137,
-      "balanced_accuracy": 0.0011800709398679388,
-      "f1_weighted": 0.0014285750601716884,
-      "minority_recall": -0.0015090543259557304,
-      "precision_weighted": 0.0012245257204629434,
-      "recall_weighted": 0.0027999999999999137,
-      "roc_auc": 0.0025184808300627304
-    },
-    "feature_importance_or_coefficient": 0.25347379539687265,
-    "generated_at": "2026-08-18T22:37:47.588996+00:00",
-    "interpretation": "A positive ROC-AUC delta means Cost_per_Day improved ranking; a zero/negative delta means it added no validated improvement. Because it is derived from two existing features, apparent importance does not by itself prove new information or causality.",
-    "material_improvement": false,
-    "material_improvement_threshold_roc_auc": 0.01,
-    "model": "random_forest",
-    "with_cost_per_day": {
-      "accuracy": 0.7503,
-      "balanced_accuracy": 0.5026518321109885,
-      "f1_weighted": 0.7097652540806886,
-      "minority_recall": 0.09154929577464789,
-      "precision_weighted": 0.6841081316201028,
-      "recall_weighted": 0.7503,
-      "roc_auc": 0.497992008466174
-    },
-    "without_cost_per_day": {
-      "accuracy": 0.7475,
-      "balanced_accuracy": 0.5014717611711206,
-      "f1_weighted": 0.7083366790205169,
-      "minority_recall": 0.09305835010060362,
-      "precision_weighted": 0.6828836058996398,
-      "recall_weighted": 0.7475,
-      "roc_auc": 0.49547352763611124
-    }
-  },
+  "candidate_beats_naive_baseline_auc": true,
   "further_experiments_required": true,
-  "generated_at": "2026-08-18T22:37:47.785809+00:00",
+  "generated_at": "2026-10-15T15:46:47.154183+00:00",
+  "leakage_assessment": {
+    "excluded_post_outcome_fields": {
+      "Cost_per_Day": "derived from post-outcome Delivery_Days",
+      "Delivery_Date": "not known when the order is placed",
+      "Delivery_Days": "derived from Ship_Date and Delivery_Date",
+      "Delivery_Status": "target label",
+      "Ship_Date": "not known when the order is placed"
+    },
+    "generated_at": "2026-10-15T15:32:10.829190+00:00",
+    "included_features": [
+      "Customer_Region",
+      "Product_Category",
+      "Shipping_Mode",
+      "Shipping_Cost",
+      "Order_Month",
+      "Order_DayOfWeek"
+    ],
+    "prediction_time": "when the order is placed",
+    "status": "passed"
+  },
   "model_performance_sufficient": false,
   "recommended_data_modification": "Collect predictive operational events available before the outcome, then revisit the target.",
-  "selected_model": "random_forest",
+  "selected_model": "xgboost",
   "validation_metrics": {
-    "accuracy": 0.7503,
-    "balanced_accuracy": 0.5026518321109885,
-    "f1_weighted": 0.7097652540806886,
-    "minority_recall": 0.09154929577464789,
-    "precision_weighted": 0.6841081316201028,
-    "recall_weighted": 0.7503,
-    "roc_auc": 0.497992008466174
-  }
+    "accuracy": 0.840235442505781,
+    "average_precision_delayed": 0.15989873008416008,
+    "balanced_accuracy": 0.4993558518706236,
+    "brier_score": 0.13653244835674366,
+    "f1_macro": 0.45789368879164327,
+    "f1_weighted": 0.769509395948898,
+    "fn": 21,
+    "fp": 1499,
+    "minority_precision": 0.08695652173913043,
+    "minority_recall": 0.0013324450366422385,
+    "precision_weighted": 0.7229299694372835,
+    "recall_weighted": 0.840235442505781,
+    "roc_auc": 0.5077864393079434,
+    "tn": 2,
+    "tp": 7992
+  },
+  "validation_roc_auc_uplift_over_naive_baseline": 0.007786439307943427
 }

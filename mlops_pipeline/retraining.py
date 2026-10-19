@@ -81,6 +81,23 @@ def run_retraining(
     if promoted:
         config.model_registry.mkdir(parents=True, exist_ok=True)
         shutil.copy2(run_config.model_registry / "candidate_model.joblib", champion_path)
+        champion_bundle = config.model_registry / "champion_bundle.joblib"
+        shutil.copy2(run_config.model_registry / "candidate_bundle.joblib", champion_bundle)
+        candidate_manifest = json.loads(
+            (run_config.model_registry / "candidate_manifest.json").read_text(encoding="utf-8")
+        )
+        candidate_manifest.update(
+            {
+                "bundle_file": "champion_bundle.joblib",
+                "promotion_status": "approved",
+                "promoted_at": utc_now(),
+                "checkpoint_decision": evaluation["checkpoint_decision"],
+            }
+        )
+        write_json(config.model_registry / "champion_manifest.json", candidate_manifest)
+
+    config.reports.mkdir(parents=True, exist_ok=True)
+    write_json(config.reports / "checkpoint_decision.json", evaluation)
 
     report = {
         "generated_at": utc_now(),
@@ -91,6 +108,9 @@ def run_retraining(
         "checkpoint_decision": evaluation["checkpoint_decision"],
         "promoted": promoted,
         "champion_path": str(champion_path) if promoted else None,
+        "champion_bundle_path": (
+            str(config.model_registry / "champion_bundle.joblib") if promoted else None
+        ),
         "rollback": (
             "Previous champion is unchanged until the new candidate passes every gate; "
             "versioned run artifacts remain available for audit."

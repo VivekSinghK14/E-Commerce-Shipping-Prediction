@@ -1,0 +1,12 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "gate_behavior": "approved prediction served",
+  "generated_at": "2026-10-15T18:19:27.556213+00:00",
+  "health_status": "ok",
+  "metrics_available": true,
+  "model_approved": true,
+  "monitoring_available": true,
+  "pipeline_status": "ready",
+  "prediction_http_status": 200,
+  "status": "passed"
+}

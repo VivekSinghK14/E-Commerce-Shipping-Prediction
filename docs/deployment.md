@@ -1,9 +1,38 @@
 # Deployment Documentation
 
-> Current status: technical deployment prototype available; business deployment
-> blocked. The corrected evaluation decision is
-> `RETURN_TO_BUSINESS_UNDERSTANDING`. The legacy API remains available only to
-> demonstrate serving, testing, monitoring, and maintenance components.
+> Current status: **deployed by management override.** The evaluation decision is
+> still `RETURN_TO_BUSINESS_UNDERSTANDING` (the model failed its business gates).
+> The project owner recorded an audited override so the prototype can be
+> demonstrated; every prediction response states this and carries a warning.
+
+## Deployment by management override
+
+The evaluation result is unchanged: the model **failed** its business gates
+(`RETURN_TO_BUSINESS_UNDERSTANDING`). Because the course requires a deployed,
+demonstrable prototype, the project owner recorded an explicit, audited
+deployment override:
+
+```powershell
+python scripts/deploy_with_override.py --actor "Vivek Kumar Singh (project owner)" `
+  --reason "Course requirement: the prototype must be deployed and demonstrated end to end even though the evaluation gates failed."
+```
+
+The override:
+
+- copies the exact evaluated candidate bundle (SHA-256 checked) to `champion_bundle.joblib`;
+- writes `champion_manifest.json` with `promotion_status = approved_by_override`, the actor, rationale, failed gates, and test metrics;
+- writes `artifacts/reports/deployment_override.json` and appends to `artifacts/lifecycle_decision_log.jsonl`;
+- sets the lifecycle status to `DEPLOYED_BY_OVERRIDE_EVALUATION_GATES_FAILED`.
+
+The API then serves predictions, and every response contains
+`"deployment_basis": "DEPLOYED_BY_MANAGEMENT_OVERRIDE"` plus a warning that
+the model failed evaluation. Without an override, prediction endpoints return
+HTTP 503. To withdraw the deployment:
+
+```powershell
+python scripts/manage_lifecycle.py discontinue --actor "<name>" --reason "<why>"
+```
+
 
 ## Source Requirements
 
@@ -41,31 +70,34 @@ is now treated as historical because the notebook reused test data during
 threshold selection and the model did not demonstrate useful discrimination.
 The corrected pipeline selects a candidate on validation data and then applies
 an independent test/business checkpoint. The current candidate is rejected.
+XGBoost is the final selected algorithm for the academic prototype.
+It did not pass evaluation and is served only under the recorded override.
 
-The legacy technical demonstration predicts:
+The gated service is designed to predict:
 
-- `1`: Delivered / On Time
-- `0`: Not On Time, combining Delayed and Returned
+- `1`: Delivered
+- `0`: Delayed
+
+`Returned` orders are out of scope and are removed from the data before
+training, so the service never predicts or reports them.
 
 Current artifacts:
 
-- Legacy demonstration artifact: `processed/best_model.pkl`
 - Authoritative feature store: `artifacts/feature_store/`
 - Candidate registry and approval manifest: `artifacts/model_registry/`
 - Model metadata store: `artifacts/model_metadata_store/`
-- MLflow backend: `artifacts/mlflow/`
+- MLflow SQLite backend and artifact store: `artifacts/mlflow/`
 - Serving component: `deployment/app.py`
 - Monitoring component: `/monitoring`, `/metrics`, and `runtime/prediction_log.jsonl`
 - Complete lifecycle pipeline: `scripts/run_end_to_end_pipeline.py`
 - Guarded retraining/promotion: `scripts/retrain_model.py`
 
-Known artifact issue: `processed/scaler.pkl` contains only numeric column names, not a fitted scaler object. To keep deployment reproducible, the API embeds scaler parameters reconstructed exactly from the original notebook preprocessing and the saved `processed/X_train.csv`.
 
 ## Impact Assessment
 
 Managerial impact:
 
-- Domain users can test shipment on-time predictions through an API instead of notebooks.
+- Domain users can test Delivered-vs-Delayed predictions through an API instead of notebooks.
 - The prototype supports repeatable deployment demonstrations for the MLOps project.
 - The binary framing simplifies business interpretation: on-time versus not on-time.
 - The dataset has limited predictive signal, so predictions should be treated as prototype decision support, not an automated operational decision system.
@@ -93,8 +125,8 @@ flowchart LR
     repo[Source Code Repository] --> ci[CI/CD Workflow]
     ci --> tests[Deployment Tests]
     repo --> docker[Docker Image]
-    features[Feature Store Prototype\nprocessed CSV files] --> api[Serving Component\nFastAPI]
-    registry[Model Registry Prototype\nbest_model.pkl] --> api
+    features[Feature Store\nvalidated split artifacts] --> api[Serving Component\nFastAPI]
+    registry[Gated Model Registry\ncandidate or champion bundle] --> api
     metadata[Model Metadata Store\ncomparison and MLflow exports] --> api
     api --> users[Domain Users\nAPI docs and REST clients]
     api --> monitor[Monitoring Component\n/monitoring and /metrics]
@@ -175,7 +207,7 @@ The prototype maps the process-model components as follows:
 
 10. Rollback plan.
    - Stop current service.
-   - Restore previous `processed/best_model.pkl` from version control or backup.
+   - Restore the previous approved champion bundle and manifest from the registry backup.
    - Rerun tests and smoke test.
    - Restart serving component or container.
 
@@ -200,6 +232,11 @@ Manual smoke test:
 ```powershell
 python scripts/smoke_test_deployment.py --base-url http://127.0.0.1:8000
 ```
+
+The smoke test passes in either valid operating mode: it verifies a prediction
+when an approved model exists, or verifies HTTP 503 gate enforcement when the
+selected algorithm is not approved. Use `--require-approved` for a production
+release check that must fail unless a champion is serving.
 
 Acceptance criteria:
 

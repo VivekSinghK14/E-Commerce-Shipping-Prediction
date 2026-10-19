@@ -4,5 +4,6 @@ pandas>=2.2,<2.3
 scikit-learn>=1.6,<1.7
 xgboost==3.2.0
 joblib>=1.4,<2
+matplotlib>=3.9,<4
 requests>=2.32,<3
 mlflow>=3.5,<4

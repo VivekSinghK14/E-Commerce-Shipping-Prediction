@@ -1,3 +1,4 @@
+import json
 import time
 from dataclasses import dataclass
 
@@ -7,13 +8,15 @@ import mlflow.sklearn
 from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     balanced_accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
@@ -21,8 +24,9 @@ from sklearn.metrics import (
 )
 
 from .business import classification_economics, model_business_characteristics
-from .config import FEATURE_COLUMNS, PipelineConfig
+from .config import FEATURE_COLUMNS, NUMERIC_COLUMNS, PipelineConfig
 from .io_utils import file_sha256, utc_now, write_json
+from .mlflow_utils import configure_mlflow
 
 
 @dataclass
@@ -43,6 +47,9 @@ def _load_split(config: PipelineConfig, split: str) -> tuple[pd.DataFrame, pd.Se
 
 
 def _metrics(y_true: pd.Series, prediction: np.ndarray, probability: np.ndarray) -> dict:
+    tn, fp, fn, tp = confusion_matrix(y_true, prediction, labels=[0, 1]).ravel()
+    delayed_true = 1 - np.asarray(y_true)
+    delayed_probability = 1 - np.asarray(probability)
     return {
         "accuracy": float(accuracy_score(y_true, prediction)),
         "balanced_accuracy": float(balanced_accuracy_score(y_true, prediction)),
@@ -52,7 +59,19 @@ def _metrics(y_true: pd.Series, prediction: np.ndarray, probability: np.ndarray)
         ),
         "recall_weighted": float(recall_score(y_true, prediction, average="weighted")),
         "minority_recall": float(recall_score(y_true, prediction, pos_label=0, zero_division=0)),
+        "minority_precision": float(
+            precision_score(y_true, prediction, pos_label=0, zero_division=0)
+        ),
+        "f1_macro": float(f1_score(y_true, prediction, average="macro")),
         "roc_auc": float(roc_auc_score(y_true, probability)),
+        "average_precision_delayed": float(
+            average_precision_score(delayed_true, delayed_probability)
+        ),
+        "brier_score": float(brier_score_loss(y_true, probability)),
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
     }
 
 
@@ -89,10 +108,13 @@ def _candidate_models(random_state: int, quick: bool) -> dict:
     return models
 
 
-def _tune_threshold(y_true: pd.Series, probabilities: np.ndarray) -> tuple[float, list[dict]]:
+def _tune_threshold(
+    y_true: pd.Series, probabilities: np.ndarray, config: PipelineConfig
+) -> tuple[float, list[dict]]:
     rows = []
     for threshold in np.arange(0.10, 0.91, 0.01):
         prediction = (probabilities >= threshold).astype(int)
+        economics = classification_economics(y_true, prediction, config)
         rows.append(
             {
                 "threshold": round(float(threshold), 2),
@@ -101,10 +123,39 @@ def _tune_threshold(y_true: pd.Series, probabilities: np.ndarray) -> tuple[float
                 "minority_recall": float(
                     recall_score(y_true, prediction, pos_label=0, zero_division=0)
                 ),
+                "net_benefit_eur": economics["net_benefit_eur"],
+                "candidate_net_benefit_positive": economics["net_benefit_eur"] > 0,
             }
         )
-    # Balanced accuracy prevents the majority-only threshold from appearing optimal.
-    winner = max(rows, key=lambda row: (row["balanced_accuracy"], row["f1_weighted"]))
+    # Threshold choice follows the stated business objective. Minority recall is
+    # treated as a safety constraint so a profitable majority-only policy cannot win.
+    recall_feasible = [
+        row for row in rows if row["minority_recall"] >= config.minimum_minority_recall
+    ]
+    business_feasible = [
+        row for row in recall_feasible if row["candidate_net_benefit_positive"]
+    ]
+    if business_feasible:
+        winner = max(
+            business_feasible,
+            key=lambda row: (
+                row["net_benefit_eur"],
+                row["balanced_accuracy"],
+                row["f1_weighted"],
+            ),
+        )
+    else:
+        # No threshold meets the economic gate. Keep a diagnostically balanced
+        # threshold instead of pretending the least-negative policy is viable.
+        pool = recall_feasible or rows
+        winner = max(
+            pool,
+            key=lambda row: (
+                row["balanced_accuracy"],
+                row["f1_weighted"],
+                row["net_benefit_eur"],
+            ),
+        )
     return winner["threshold"], rows
 
 
@@ -114,15 +165,13 @@ def develop_and_assess_models(config: PipelineConfig, quick: bool = False) -> di
     x_validation, y_validation = _load_split(config, "validation")
     config.metadata_store.mkdir(parents=True, exist_ok=True)
     config.model_registry.mkdir(parents=True, exist_ok=True)
-    config.mlflow_store.mkdir(parents=True, exist_ok=True)
-    mlflow.set_tracking_uri(config.mlflow_store.resolve().as_uri())
-    mlflow.set_experiment("ecommerce-shipping-bpmn")
+    configure_mlflow(config)
 
     hypotheses = {
         "generated_at": utc_now(),
         "business_hypothesis": (
             "Attributes available at or near order time contain enough signal to identify "
-            "shipments that will be delayed or returned."
+            "shipments that will be delayed (Delivered vs Delayed)."
         ),
         "null_hypothesis": (
             "The available predictors provide no useful discrimination beyond chance/baseline."
@@ -148,11 +197,14 @@ def develop_and_assess_models(config: PipelineConfig, quick: bool = False) -> di
 
     test_design = {
         "generated_at": utc_now(),
-        "problem": "Binary classification: Delivered (1) vs Delayed/Returned (0)",
+        "problem": "Binary classification: Delivered (1) vs Delayed (0)",
         "selection_dataset": "validation split only",
         "final_assessment_dataset": "untouched test split only",
         "selection_metric": "validation ROC-AUC",
-        "threshold_metric": "validation balanced accuracy",
+        "threshold_metric": (
+            "maximum positive validation net benefit subject to the minority-recall gate; "
+            "if no threshold is economically viable, use balanced accuracy as a diagnostic fallback"
+        ),
         "baseline": "DummyClassifier predicting training class prior",
         "models": list(_candidate_models(config.random_state, quick)),
         "random_state": config.random_state,
@@ -198,7 +250,7 @@ def develop_and_assess_models(config: PipelineConfig, quick: bool = False) -> di
                     "validation_net_benefit_eur": economics["net_benefit_eur"],
                 }
             )
-            input_example = x_train.head(5)
+            input_example = x_train.head(5).astype(float)
             signature = infer_signature(input_example, model.predict(input_example))
             mlflow.sklearn.log_model(
                 sk_model=model,
@@ -250,89 +302,65 @@ def develop_and_assess_models(config: PipelineConfig, quick: bool = False) -> di
 
     eligible = [result for result in results if result.name != "dummy_majority"]
     selected = max(eligible, key=lambda result: result.metrics["roc_auc"])
+    baseline_result = next(result for result in results if result.name == "dummy_majority")
+    candidate_auc_uplift = selected.metrics["roc_auc"] - baseline_result.metrics["roc_auc"]
     validation_probability = selected.model.predict_proba(x_validation)[:, 1]
-    threshold, threshold_rows = _tune_threshold(y_validation, validation_probability)
+    threshold, threshold_rows = _tune_threshold(
+        y_validation, validation_probability, config
+    )
+    selected_threshold_row = next(
+        row for row in threshold_rows if row["threshold"] == threshold
+    )
     pd.DataFrame(threshold_rows).to_csv(
         config.reports / "threshold_sweep_validation.csv", index=False
     )
 
-    # Controlled ablation: same selected algorithm and split, only Cost_per_Day differs.
-    without_cost_per_day = [column for column in FEATURE_COLUMNS if column != "Cost_per_Day"]
-    ablation_model = clone(selected.model)
-    ablation_model.fit(x_train[without_cost_per_day], y_train)
-    ablation_probability = ablation_model.predict_proba(x_validation[without_cost_per_day])[:, 1]
-    ablation_prediction = ablation_model.predict(x_validation[without_cost_per_day])
-    ablation_metrics = _metrics(y_validation, ablation_prediction, ablation_probability)
-    importance = None
-    if hasattr(selected.model, "feature_importances_"):
-        importance = {
-            column: float(value)
-            for column, value in zip(FEATURE_COLUMNS, selected.model.feature_importances_)
-        }
-    elif hasattr(selected.model, "coef_"):
-        importance = {
-            column: float(value)
-            for column, value in zip(FEATURE_COLUMNS, selected.model.coef_[0])
-        }
-    cost_per_day_ablation = {
-        "generated_at": utc_now(),
-        "model": selected.name,
-        "controlled_comparison": "same algorithm, split, seed, and settings; only feature set differs",
-        "with_cost_per_day": selected.metrics,
-        "without_cost_per_day": ablation_metrics,
-        "delta_with_minus_without": {
-            metric: selected.metrics[metric] - ablation_metrics[metric]
-            for metric in selected.metrics
-        },
-        "material_improvement_threshold_roc_auc": 0.01,
-        "material_improvement": (
-            selected.metrics["roc_auc"] - ablation_metrics["roc_auc"] >= 0.01
-            and selected.metrics["roc_auc"] >= config.minimum_roc_auc
-        ),
-        "cost_per_day_formula": "Shipping_Cost / Delivery_Days",
-        "feature_importance_or_coefficient": None if importance is None else importance.get("Cost_per_Day"),
-        "all_feature_importances_or_coefficients": importance,
-        "interpretation": (
-            "A positive ROC-AUC delta means Cost_per_Day improved ranking; a zero/negative delta "
-            "means it added no validated improvement. Because it is derived from two existing "
-            "features, apparent importance does not by itself prove new information or causality."
-        ),
-    }
-    cost_per_day_ablation["conclusion"] = (
-        "Cost_per_Day provides a material validated improvement."
-        if cost_per_day_ablation["material_improvement"]
-        else "Cost_per_Day does not provide a material validated improvement; keep only if its business interpretability is useful."
-    )
-    write_json(config.reports / "cost_per_day_ablation.json", cost_per_day_ablation)
-    ablation_md = f"""# Cost_per_Day feature ablation
-
-`Cost_per_Day = Shipping_Cost / Delivery_Days` was tested using the same
-`{selected.name}` algorithm, seed, training rows, and validation rows.
-
-- ROC-AUC with feature: `{selected.metrics['roc_auc']:.6f}`
-- ROC-AUC without feature: `{ablation_metrics['roc_auc']:.6f}`
-- Delta (with − without): `{selected.metrics['roc_auc'] - ablation_metrics['roc_auc']:.6f}`
-- Feature importance/coefficient: `{cost_per_day_ablation['feature_importance_or_coefficient']}`
-- Material improvement (>= 0.01 ROC-AUC and overall gate passed): `{cost_per_day_ablation['material_improvement']}`
-
-The delta, not feature importance alone, answers whether it improves validated
-performance. Importance describes model usage, not causality. Since the feature
-is derived from `Shipping_Cost` and `Delivery_Days`, it may be redundant.
-
-**Conclusion:** {cost_per_day_ablation['conclusion']}
-"""
-    (config.reports / "cost_per_day_ablation.md").write_text(ablation_md, encoding="utf-8")
-
     model_path = config.model_registry / "candidate_model.joblib"
     joblib.dump(selected.model, model_path)
+    preparation = json.loads(
+        (config.feature_store / "feature_manifest.json").read_text(encoding="utf-8")
+    )
+    bundle_path = config.model_registry / "candidate_bundle.joblib"
+    joblib.dump(
+        {
+            "model": selected.model,
+            "scaler": joblib.load(config.feature_store / "scaler.joblib"),
+            "category_maps": preparation["category_maps"],
+            "feature_columns": FEATURE_COLUMNS,
+            "numeric_columns": NUMERIC_COLUMNS,
+            "threshold": threshold,
+            "model_name": selected.name,
+        },
+        bundle_path,
+    )
     selection = {
         "generated_at": utc_now(),
         "selected_model": selected.name,
+        "selection_role": "best experimental non-baseline candidate",
         "selection_reason": "Highest validation ROC-AUC among non-baseline candidates",
+        "best_overall_validation_model": comparison.iloc[0]["model"],
+        "naive_baseline_model": baseline_result.name,
+        "naive_baseline_validation_metrics": baseline_result.metrics,
+        "validation_roc_auc_uplift_over_naive_baseline": candidate_auc_uplift,
+        "candidate_beats_naive_baseline_auc": candidate_auc_uplift > 0,
         "validation_metrics_at_default_threshold": selected.metrics,
         "validation_selected_threshold": threshold,
+        "threshold_selection": {
+            "dataset": "validation",
+            "policy": test_design["threshold_metric"],
+            "status": (
+                "business_threshold_selected"
+                if selected_threshold_row["candidate_net_benefit_positive"]
+                else "no_economically_viable_threshold_diagnostic_fallback"
+            ),
+            "metrics": selected_threshold_row,
+        },
         "model_path": str(model_path),
         "model_sha256": file_sha256(model_path),
+        "bundle_file": "candidate_bundle.joblib",
+        "bundle_path": str(bundle_path),
+        "bundle_sha256": file_sha256(bundle_path),
+        "feature_columns": FEATURE_COLUMNS,
         "mlflow_run_id": selected.mlflow_run_id,
         "mlflow_tracking_uri": mlflow.get_tracking_uri(),
         "registry_stage": "candidate",
@@ -341,14 +369,21 @@ is derived from `Shipping_Cost` and `Delivery_Days`, it may be redundant.
     write_json(config.reports / "analytical_model_selection.json", selection)
     write_json(config.model_registry / "candidate_manifest.json", selection)
 
-    validation_signal_sufficient = selected.metrics["roc_auc"] >= config.minimum_roc_auc
+    validation_signal_sufficient = (
+        selected.metrics["roc_auc"] >= config.minimum_roc_auc
+        and candidate_auc_uplift > 0
+    )
     model_assessment = {
         "generated_at": utc_now(),
         "selected_model": selected.name,
         "validation_metrics": selected.metrics,
         "model_performance_sufficient": validation_signal_sufficient,
+        "candidate_beats_naive_baseline_auc": candidate_auc_uplift > 0,
+        "validation_roc_auc_uplift_over_naive_baseline": candidate_auc_uplift,
         "further_experiments_required": not validation_signal_sufficient,
-        "cost_per_day_ablation": cost_per_day_ablation,
+        "leakage_assessment": json.loads(
+            (config.reports / "feature_leakage_assessment.json").read_text(encoding="utf-8")
+        ),
         "recommended_data_modification": (
             None
             if validation_signal_sufficient

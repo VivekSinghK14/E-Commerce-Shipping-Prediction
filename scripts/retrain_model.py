@@ -18,9 +18,16 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true", help="Use smaller ensembles for a smoke run.")
     parser.add_argument("--observed-roc-auc", type=float, default=None)
     parser.add_argument("--max-age-days", type=int, default=30)
+    parser.add_argument("--artifacts-dir", type=Path, default=None)
+    parser.add_argument("--raw-data", type=Path, default=None)
     args = parser.parse_args()
+    defaults = PipelineConfig()
+    config = PipelineConfig(
+        raw_data=(args.raw_data or defaults.raw_data).resolve(),
+        artifacts=(args.artifacts_dir or defaults.artifacts).resolve(),
+    )
     result = run_retraining(
-        PipelineConfig(),
+        config,
         force=args.force,
         quick=args.quick,
         observed_roc_auc=args.observed_roc_auc,

@@ -1,96 +1,59 @@
 import json
 import os
-import pickle
+from functools import lru_cache
 from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from uuid import uuid4
 
+import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
+
+from mlops_pipeline.config import FEATURE_COLUMNS, NUMERIC_COLUMNS
+from mlops_pipeline.feature_engineering import build_order_time_features
+from deployment import operations_store
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = PROJECT_ROOT / "processed" / "best_model.pkl"
-SCALER_PATH = PROJECT_ROOT / "processed" / "scaler.pkl"
-MODEL_COMPARISON_PATH = PROJECT_ROOT / "processed" / "model_comparison_all.csv"
-MLFLOW_EXPORT_PATH = PROJECT_ROOT / "processed" / "mlflow_runs_export.csv"
-THRESHOLD_SWEEP_PATH = PROJECT_ROOT / "processed" / "threshold_sweep.csv"
-CHECKPOINT_PATH = PROJECT_ROOT / "artifacts" / "reports" / "checkpoint_decision.json"
-REGISTRY_MANIFEST_PATH = PROJECT_ROOT / "artifacts" / "model_registry" / "candidate_manifest.json"
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(PROJECT_ROOT / "artifacts"))).resolve()
+REPORTS_DIR = ARTIFACTS_DIR / "reports"
+REGISTRY_DIR = ARTIFACTS_DIR / "model_registry"
+FEATURE_STORE_DIR = ARTIFACTS_DIR / "feature_store"
+MODEL_PATH = REGISTRY_DIR / "candidate_model.joblib"
+SCALER_PATH = FEATURE_STORE_DIR / "scaler.joblib"
+MODEL_COMPARISON_PATH = REPORTS_DIR / "model_comparison_validation.csv"
+MLFLOW_EXPORT_PATH = ARTIFACTS_DIR / "mlflow"
+THRESHOLD_SWEEP_PATH = REPORTS_DIR / "threshold_sweep_validation.csv"
+BASELINE_COMPARISON_PATH = REPORTS_DIR / "naive_vs_best_candidate.png"
+SELECTION_PATH = REPORTS_DIR / "analytical_model_selection.json"
+CHECKPOINT_PATH = REPORTS_DIR / "checkpoint_decision.json"
+REGISTRY_MANIFEST_PATH = REGISTRY_DIR / "candidate_manifest.json"
+CHAMPION_MANIFEST_PATH = REGISTRY_DIR / "champion_manifest.json"
+SYSTEM_STATE_PATH = ARTIFACTS_DIR / "system_state.json"
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 PREDICTION_LOG_PATH = Path(
     os.getenv("PREDICTION_LOG_PATH", str(RUNTIME_DIR / "prediction_log.jsonl"))
 )
 
-FEATURE_COLUMNS = [
-    "Customer_Region",
-    "Product_Category",
-    "Shipping_Mode",
-    "Shipping_Cost",
-    "Delivery_Days",
-    "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day",
-]
-
-NUMERIC_COLUMNS = [
-    "Shipping_Cost",
-    "Delivery_Days",
-    "Cost_per_Day",
-    "Order_Month",
-    "Order_DayOfWeek",
-]
-
-SCALER_MEAN = {
-    "Shipping_Cost": 138.772625,
-    "Delivery_Days": 5.99135,
-    "Cost_per_Day": 29.75314143849206,
-    "Order_Month": 6.504175,
-    "Order_DayOfWeek": 3.007375,
-}
-
-SCALER_SCALE = {
-    "Shipping_Cost": 72.65399593697083,
-    "Delivery_Days": 2.5754660117151613,
-    "Cost_per_Day": 24.719535726204956,
-    "Order_Month": 3.4573158041137924,
-    "Order_DayOfWeek": 2.0011298332129774,
-}
-
-CATEGORY_MAPS = {
-    "Customer_Region": {
-        "Central": 0,
-        "East": 1,
-        "North": 2,
-        "South": 3,
-        "West": 4,
-    },
-    "Product_Category": {
-        "Beauty": 0,
-        "Electronics": 1,
-        "Fashion": 2,
-        "Grocery": 3,
-        "Home": 4,
-        "Sports": 5,
-    },
-    "Shipping_Mode": {
-        "Express": 0,
-        "Same Day": 1,
-        "Standard": 2,
-    },
-}
-
-DEFAULT_THRESHOLD = float(os.getenv("PREDICTION_THRESHOLD", "0.34"))
 TARGET_LABELS = {
-    0: "Not On Time",
-    1: "Delivered / On Time",
+    0: "Delayed",
+    1: "Delivered",
 }
+
+OVERRIDE_STATUS = "approved_by_override"
+OVERRIDE_WARNING = (
+    "Prototype deployment: this model did not meet all evaluation gates (test ROC-AUC "
+    "near 0.5). Predictions demonstrate the MLOps pipeline and are not yet a reliable "
+    "delay forecast."
+)
 
 SERVICE_STARTED_AT = datetime.now(timezone.utc)
 MONITORING_LOCK = Lock()
@@ -118,7 +81,6 @@ class ShipmentRecord(BaseModel):
         ..., examples=["Standard"], description="Raw label or encoded category code."
     )
     Shipping_Cost: float = Field(..., examples=[122.0])
-    Delivery_Days: float = Field(..., examples=[10.0])
     Order_Date: str | None = Field(
         default=None,
         examples=["2024-05-12"],
@@ -131,7 +93,6 @@ class ShipmentRecord(BaseModel):
         le=6,
         description="Monday=0, Sunday=6, matching pandas dt.dayofweek.",
     )
-    Cost_per_Day: float | None = None
 
 
 class ProcessedRecord(BaseModel):
@@ -139,10 +100,8 @@ class ProcessedRecord(BaseModel):
     Product_Category: int
     Shipping_Mode: int
     Shipping_Cost: float
-    Delivery_Days: float
     Order_Month: float
     Order_DayOfWeek: float
-    Cost_per_Day: float
 
 
 class BatchShipmentRequest(BaseModel):
@@ -153,20 +112,32 @@ class BatchProcessedRequest(BaseModel):
     records: list[ProcessedRecord]
 
 
-def load_pickle(path: Path) -> Any:
-    if not path.exists():
-        raise RuntimeError(f"Required artifact not found: {path}")
-    with path.open("rb") as f:
-        return pickle.load(f)
+class OutcomeFeedback(BaseModel):
+    prediction_id: str
+    actual_delivered: bool
+    realized_value_eur: float | None = None
 
 
-model = load_pickle(MODEL_PATH)
-scaler = load_pickle(SCALER_PATH)
+class SupportTicketRequest(BaseModel):
+    category: str = Field(..., min_length=2, max_length=80)
+    description: str = Field(..., min_length=5, max_length=2000)
+
+
+class SupportResolution(BaseModel):
+    resolution: str = Field(..., min_length=5, max_length=2000)
+
+
+@lru_cache(maxsize=4)
+def _load_bundle(bundle_path: str) -> dict[str, Any]:
+    bundle = joblib.load(bundle_path)
+    if bundle.get("feature_columns") != FEATURE_COLUMNS:
+        raise RuntimeError("Registered model feature contract does not match the serving API")
+    return bundle
 
 app = FastAPI(
     title="E-Commerce Shipping Prediction API",
     version="1.0.0",
-    description="Predicts whether an e-commerce shipment will be delivered/on time.",
+    description="Predicts whether an e-commerce shipment will be Delivered or Delayed.",
 )
 
 
@@ -217,7 +188,7 @@ def record_prediction_event(endpoint: str, input_count: int, results: list[dict[
         "avg_on_time_probability": (
             sum(probabilities) / len(probabilities) if probabilities else None
         ),
-        "threshold": DEFAULT_THRESHOLD,
+        "threshold": results[0]["threshold"] if results else None,
     }
 
     with MONITORING_LOCK:
@@ -231,6 +202,7 @@ def record_prediction_event(endpoint: str, input_count: int, results: list[dict[
         RECENT_PREDICTIONS.append(event)
 
     write_jsonl(event)
+    operations_store.record_predictions(endpoint, results)
 
 
 def monitoring_snapshot() -> dict[str, Any]:
@@ -241,7 +213,7 @@ def monitoring_snapshot() -> dict[str, Any]:
             if probability_count
             else None
         )
-        return {
+        snapshot = {
             "service_started_at": SERVICE_STARTED_AT.isoformat(),
             "uptime_seconds": round(
                 (datetime.now(timezone.utc) - SERVICE_STARTED_AT).total_seconds(), 3
@@ -256,6 +228,8 @@ def monitoring_snapshot() -> dict[str, Any]:
             "prediction_log_path": str(PREDICTION_LOG_PATH),
             "recent_predictions": list(RECENT_PREDICTIONS),
         }
+    snapshot["utilization"] = operations_store.utilization_summary()
+    return snapshot
 
 
 def read_csv_records(path: Path) -> list[dict[str, Any]]:
@@ -265,43 +239,97 @@ def read_csv_records(path: Path) -> list[dict[str, Any]]:
 
 
 def deployment_approval() -> dict[str, Any]:
-    if not CHECKPOINT_PATH.exists():
-        return {
-            "approved": False,
-            "decision": "NO_EVALUATION_CHECKPOINT",
-            "serving_mode": "legacy_prototype_only",
-        }
-    checkpoint = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
-    decision = checkpoint.get("checkpoint_decision")
+    if SYSTEM_STATE_PATH.exists():
+        system_state = json.loads(SYSTEM_STATE_PATH.read_text(encoding="utf-8"))
+        if system_state.get("status") == "DISCONTINUED":
+            return {
+                "approved": False,
+                "decision": "SYSTEM_DISCONTINUED",
+                "serving_mode": "disabled",
+                "reason": system_state.get("reason"),
+            }
+
+    checkpoint = (
+        json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+        if CHECKPOINT_PATH.exists()
+        else {}
+    )
+    decision = checkpoint.get("checkpoint_decision", "NO_EVALUATION_CHECKPOINT")
+    champion = (
+        json.loads(CHAMPION_MANIFEST_PATH.read_text(encoding="utf-8"))
+        if CHAMPION_MANIFEST_PATH.exists()
+        else {}
+    )
+    if champion.get("promotion_status") in {"approved", OVERRIDE_STATUS}:
+        bundle_path = REGISTRY_DIR / champion.get("bundle_file", "champion_bundle.joblib")
+        if bundle_path.exists():
+            overridden = champion["promotion_status"] == OVERRIDE_STATUS
+            return {
+                "approved": True,
+                "decision": "DEPLOYED_BY_MANAGEMENT_OVERRIDE" if overridden else "APPROVED_CHAMPION",
+                "serving_mode": "override_champion" if overridden else "champion",
+                "bundle_path": str(bundle_path),
+                "model_name": champion.get("selected_model"),
+                "threshold": champion.get(
+                    "threshold", champion.get("validation_selected_threshold")
+                ),
+                "evaluation_decision": decision,
+                "override": champion.get("override") if overridden else None,
+                "warning": OVERRIDE_WARNING if overridden else None,
+            }
+
+    manifest = (
+        json.loads(REGISTRY_MANIFEST_PATH.read_text(encoding="utf-8"))
+        if REGISTRY_MANIFEST_PATH.exists()
+        else {}
+    )
+    bundle_path = REGISTRY_DIR / manifest.get("bundle_file", "candidate_bundle.joblib")
+    approved = decision == "PROCEED_TO_DEPLOYMENT" and bundle_path.exists()
     return {
-        "approved": decision == "PROCEED_TO_DEPLOYMENT",
+        "approved": approved,
         "decision": decision,
-        "serving_mode": (
-            "approved_candidate" if decision == "PROCEED_TO_DEPLOYMENT" else "legacy_prototype_only"
-        ),
+        "serving_mode": "approved_candidate" if approved else "blocked",
+        "bundle_path": str(bundle_path) if approved else None,
+        "model_name": manifest.get("selected_model"),
+        "threshold": manifest.get("validation_selected_threshold"),
         "warning": (
             None
-            if decision == "PROCEED_TO_DEPLOYMENT"
-            else "Current endpoint is for technical demonstration; the evaluated candidate is not approved for business use."
+            if approved
+            else "Prediction serving is blocked until an evaluated registry bundle is approved."
         ),
     }
 
 
+def get_serving_bundle() -> dict[str, Any]:
+    approval = deployment_approval()
+    if not approval["approved"]:
+        raise HTTPException(status_code=503, detail=approval["warning"] or approval["decision"])
+    try:
+        return _load_bundle(approval["bundle_path"])
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=f"Approved model bundle unavailable: {exc}") from exc
+
+
 def selected_model_metadata() -> dict[str, Any]:
-    rows = read_csv_records(MODEL_COMPARISON_PATH)
-    selected = next(
-        (row for row in rows if str(row.get("Model", "")).casefold() == "xgboost binary"),
-        None,
+    selection = (
+        json.loads(SELECTION_PATH.read_text(encoding="utf-8"))
+        if SELECTION_PATH.exists()
+        else {}
     )
-    threshold_rows = read_csv_records(THRESHOLD_SWEEP_PATH)
-    best_threshold = None
-    if threshold_rows:
-        best_threshold = max(threshold_rows, key=lambda row: row.get("F1", 0))
+    checkpoint = (
+        json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
+        if CHECKPOINT_PATH.exists()
+        else {}
+    )
     return {
-        "model_type": type(model).__name__,
-        "selected_model": selected,
-        "best_threshold_from_sweep": best_threshold,
-        "configured_threshold": DEFAULT_THRESHOLD,
+        "model_type": selection.get("selected_model"),
+        "selected_model": selection.get("selected_model"),
+        "validation_metrics": selection.get("validation_metrics_at_default_threshold"),
+        "configured_threshold": selection.get("validation_selected_threshold"),
+        "selection_role": selection.get("selection_role"),
+        "best_experimental_candidate": selection.get("selected_model"),
+        "final_selected_model": checkpoint.get("final_selected_model"),
+        "deployment_model": checkpoint.get("deployment_model"),
         "mlflow_runs_available": MLFLOW_EXPORT_PATH.exists(),
     }
 
@@ -319,7 +347,7 @@ async def validation_exception_handler(_request, exc: RequestValidationError):
 
 
 def canonicalize_category(name: str, value: str | int) -> int:
-    mapping = CATEGORY_MAPS[name]
+    mapping = get_serving_bundle()["category_maps"][name]
 
     if isinstance(value, int):
         if value in mapping.values():
@@ -348,57 +376,29 @@ def parse_order_date(value: str) -> datetime:
         ) from exc
 
 
-def raw_record_to_features(record: ShipmentRecord) -> dict[str, float | int]:
-    if record.Order_Month is None or record.Order_DayOfWeek is None:
-        if not record.Order_Date:
-            raise HTTPException(
-                status_code=422,
-                detail="Provide Order_Date or both Order_Month and Order_DayOfWeek.",
-            )
-        parsed_date = parse_order_date(record.Order_Date)
-        order_month = parsed_date.month
-        order_day_of_week = parsed_date.weekday()
-    else:
-        order_month = record.Order_Month
-        order_day_of_week = record.Order_DayOfWeek
-
-    if record.Delivery_Days <= 0:
-        raise HTTPException(status_code=422, detail="Delivery_Days must be greater than 0.")
-
-    cost_per_day = record.Cost_per_Day
-    if cost_per_day is None:
-        cost_per_day = record.Shipping_Cost / record.Delivery_Days
-
-    return {
-        "Customer_Region": canonicalize_category("Customer_Region", record.Customer_Region),
-        "Product_Category": canonicalize_category("Product_Category", record.Product_Category),
-        "Shipping_Mode": canonicalize_category("Shipping_Mode", record.Shipping_Mode),
-        "Shipping_Cost": record.Shipping_Cost,
-        "Delivery_Days": record.Delivery_Days,
-        "Order_Month": order_month,
-        "Order_DayOfWeek": order_day_of_week,
-        "Cost_per_Day": cost_per_day,
-    }
-
-
 def prepare_raw_frame(records: list[ShipmentRecord]) -> pd.DataFrame:
-    rows = [raw_record_to_features(record) for record in records]
-    frame = pd.DataFrame(rows, columns=FEATURE_COLUMNS)
-    frame[NUMERIC_COLUMNS] = scale_numeric_columns(frame[NUMERIC_COLUMNS])
+    bundle = get_serving_bundle()
+    rows = [record.model_dump() for record in records]
+    for row in rows:
+        for name in ["Customer_Region", "Product_Category", "Shipping_Mode"]:
+            value = row[name]
+            mapping = bundle["category_maps"][name]
+            if isinstance(value, int):
+                label = next((label for label, code in mapping.items() if code == value), None)
+                if label is None:
+                    raise HTTPException(status_code=422, detail=f"Invalid {name} code: {value}")
+                row[name] = label
+    try:
+        frame = build_order_time_features(pd.DataFrame(rows), bundle["category_maps"])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    frame[NUMERIC_COLUMNS] = scale_numeric_columns(frame[NUMERIC_COLUMNS], bundle)
     return frame
 
 
-def scale_numeric_columns(frame: pd.DataFrame) -> pd.DataFrame:
-    if hasattr(scaler, "transform"):
-        return pd.DataFrame(
-            scaler.transform(frame),
-            columns=NUMERIC_COLUMNS,
-            index=frame.index,
-        )
-
-    means = pd.Series(SCALER_MEAN)
-    scales = pd.Series(SCALER_SCALE)
-    return (frame - means) / scales
+def scale_numeric_columns(frame: pd.DataFrame, bundle: dict[str, Any]) -> pd.DataFrame:
+    scaler = bundle["scaler"]
+    return pd.DataFrame(scaler.transform(frame), columns=NUMERIC_COLUMNS, index=frame.index)
 
 
 def prepare_processed_frame(records: list[ProcessedRecord]) -> pd.DataFrame:
@@ -413,13 +413,17 @@ def predict_frame(frame: pd.DataFrame) -> list[dict[str, Any]]:
             detail=f"Expected columns in this order: {FEATURE_COLUMNS}",
         )
 
+    approval = deployment_approval()
+    bundle = get_serving_bundle()
+    model = bundle["model"]
+    threshold = float(bundle["threshold"])
     probabilities = None
     if hasattr(model, "predict_proba"):
         proba = model.predict_proba(frame)
         classes = list(getattr(model, "classes_", [0, 1]))
         positive_index = classes.index(1) if 1 in classes else len(classes) - 1
         probabilities = proba[:, positive_index]
-        predictions = (probabilities >= DEFAULT_THRESHOLD).astype(int)
+        predictions = (probabilities >= threshold).astype(int)
     else:
         predictions = model.predict(frame).astype(int)
 
@@ -430,60 +434,79 @@ def predict_frame(frame: pd.DataFrame) -> list[dict[str, Any]]:
         results.append(
             {
                 "prediction": prediction_int,
+                "prediction_id": str(uuid4()),
                 "prediction_label": TARGET_LABELS.get(prediction_int, str(prediction_int)),
                 "on_time_probability": probability,
-                "threshold": DEFAULT_THRESHOLD if probabilities is not None else None,
+                "threshold": threshold if probabilities is not None else None,
+                "deployment_basis": approval["decision"],
+                "warning": approval.get("warning"),
             }
         )
     return results
 
 
+@app.get("/", include_in_schema=False)
+def web_app() -> FileResponse:
+    """Browser front end for domain users (prediction form, status, monitoring)."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
+    approval = deployment_approval()
     return {
         "status": "ok",
+        "model_ready": approval["approved"],
         "model_path": str(MODEL_PATH),
         "scaler_path": str(SCALER_PATH),
-        "scaler_source": "artifact" if hasattr(scaler, "transform") else "embedded_parameters",
         "monitoring_log_path": str(PREDICTION_LOG_PATH),
         "features": FEATURE_COLUMNS,
-        "threshold": DEFAULT_THRESHOLD,
-        "deployment_approval": deployment_approval(),
+        "threshold": approval.get("threshold"),
+        "deployment_approval": approval,
     }
 
 
 @app.get("/model-info")
 def model_info() -> dict[str, Any]:
+    approval = deployment_approval()
     return {
         "target": TARGET_LABELS,
         "features": FEATURE_COLUMNS,
         "artifacts": {
             "model": artifact_status(MODEL_PATH),
+            "candidate_bundle": artifact_status(REGISTRY_DIR / "candidate_bundle.joblib"),
+            "champion_bundle": artifact_status(REGISTRY_DIR / "champion_bundle.joblib"),
             "scaler": artifact_status(SCALER_PATH),
             "model_comparison": artifact_status(MODEL_COMPARISON_PATH),
             "mlflow_export": artifact_status(MLFLOW_EXPORT_PATH),
             "threshold_sweep": artifact_status(THRESHOLD_SWEEP_PATH),
+            "baseline_comparison": artifact_status(BASELINE_COMPARISON_PATH),
         },
         "metadata": selected_model_metadata(),
-        "deployment_approval": deployment_approval(),
+        "deployment_approval": approval,
     }
 
 
 @app.get("/pipeline/status")
 def pipeline_status() -> dict[str, Any]:
     feature_store_artifacts = {
-        "X_train": artifact_status(PROJECT_ROOT / "processed" / "X_train.csv"),
-        "X_test": artifact_status(PROJECT_ROOT / "processed" / "X_test.csv"),
-        "y_train_binary": artifact_status(PROJECT_ROOT / "processed" / "y_train_binary.csv"),
-        "y_test_binary": artifact_status(PROJECT_ROOT / "processed" / "y_test_binary.csv"),
+        "X_train": artifact_status(FEATURE_STORE_DIR / "X_train.csv"),
+        "X_validation": artifact_status(FEATURE_STORE_DIR / "X_validation.csv"),
+        "X_test": artifact_status(FEATURE_STORE_DIR / "X_test.csv"),
+        "manifest": artifact_status(FEATURE_STORE_DIR / "feature_manifest.json"),
     }
+    approval = deployment_approval()
     return {
-        "status": "ready",
-        "deployment_approval": deployment_approval(),
+        "status": "ready" if approval["approved"] else "blocked_by_checkpoint",
+        "deployment_approval": approval,
         "components": {
             "source_code_repository": "current Git repository",
             "feature_store": feature_store_artifacts,
-            "model_registry": {"production_model": artifact_status(MODEL_PATH)},
+            "model_registry": {
+                "candidate_model": artifact_status(MODEL_PATH),
+                "candidate_bundle": artifact_status(REGISTRY_DIR / "candidate_bundle.joblib"),
+                "champion_bundle": artifact_status(REGISTRY_DIR / "champion_bundle.joblib"),
+            },
             "model_metadata_store": {
                 "model_comparison": artifact_status(MODEL_COMPARISON_PATH),
                 "mlflow_export": artifact_status(MLFLOW_EXPORT_PATH),
@@ -501,7 +524,7 @@ def pipeline_status() -> dict[str, Any]:
                 "quick_validation_command": (
                     "python scripts/run_production_pipeline.py --quick"
                 ),
-                "promotion_requires_manual_flag": True,
+                "promotion_requires_evaluation_approval": True,
             },
         },
     }
@@ -510,6 +533,41 @@ def pipeline_status() -> dict[str, Any]:
 @app.get("/monitoring")
 def monitoring() -> dict[str, Any]:
     return monitoring_snapshot()
+
+
+@app.get("/utilization")
+def utilization() -> dict[str, Any]:
+    return operations_store.utilization_summary()
+
+
+@app.post("/feedback")
+def submit_feedback(feedback: OutcomeFeedback) -> dict[str, Any]:
+    try:
+        operations_store.record_outcome(
+            feedback.prediction_id,
+            feedback.actual_delivered,
+            feedback.realized_value_eur,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return operations_store.utilization_summary()
+
+
+@app.post("/support", status_code=201)
+def open_support_ticket(ticket: SupportTicketRequest) -> dict[str, str]:
+    ticket_id = operations_store.create_support_ticket(ticket.category, ticket.description)
+    return {"ticket_id": ticket_id, "status": "open"}
+
+
+@app.post("/support/{ticket_id}/resolve")
+def resolve_ticket(ticket_id: str, resolution: SupportResolution) -> dict[str, str]:
+    try:
+        operations_store.resolve_support_ticket(ticket_id, resolution.resolution)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ticket_id": ticket_id, "status": "resolved"}
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

@@ -22,5 +22,18 @@
     "ship_after_delivery": 0
   },
   "data_sufficient": true,
-  "generated_at": "2026-08-18T22:37:05.479830+00:00"
+  "generated_at": "2026-10-15T15:32:08.365262+00:00",
+  "scope_filter": {
+    "kept_outcomes": [
+      "Delivered",
+      "Delayed"
+    ],
+    "reason": "Returned orders are outside the project scope; the model predicts Delivered vs Delayed only.",
+    "removed_outcomes": {
+      "Returned": 2433
+    },
+    "rows_in_scope": 47567,
+    "rows_removed": 2433,
+    "source_rows": 50000
+  }
 }

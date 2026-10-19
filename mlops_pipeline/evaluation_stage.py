@@ -1,6 +1,9 @@
 import json
 
 import joblib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
 from sklearn.dummy import DummyClassifier
@@ -8,7 +11,70 @@ from sklearn.dummy import DummyClassifier
 from .business import classification_economics
 from .config import PipelineConfig
 from .io_utils import file_sha256, utc_now, write_json
+from .mlflow_utils import configure_mlflow
 from .model_stage import _metrics
+
+
+def _write_baseline_comparison_chart(
+    config: PipelineConfig,
+    candidate_name: str,
+    candidate_metrics: dict,
+    baseline_metrics: dict,
+    approved: bool,
+) -> None:
+    """Create an honest like-for-like baseline comparison."""
+    metric_specs = [
+        ("accuracy", "Accuracy"),
+        ("f1_weighted", "Weighted F1"),
+        ("balanced_accuracy", "Balanced accuracy"),
+        ("minority_recall", "Delayed recall"),
+        ("roc_auc", "ROC-AUC"),
+    ]
+    baseline_values = [baseline_metrics[key] for key, _ in metric_specs]
+    candidate_values = [candidate_metrics[key] for key, _ in metric_specs]
+    positions = range(len(metric_specs))
+    width = 0.36
+
+    figure, axis = plt.subplots(figsize=(12, 6.5))
+    baseline_bars = axis.bar(
+        [position - width / 2 for position in positions],
+        baseline_values,
+        width,
+        label="Naive majority baseline",
+        color="#9E9E99",
+    )
+    candidate_bars = axis.bar(
+        [position + width / 2 for position in positions],
+        candidate_values,
+        width,
+        label=f"{candidate_name.replace('_', ' ').title()} candidate",
+        color="#2E75B6",
+    )
+    axis.set_ylim(0, 1.0)
+    axis.set_ylabel("Score")
+    axis.set_xticks(list(positions), [label for _, label in metric_specs])
+    axis.set_title("Naive baseline vs best experimental candidate (untouched test set)")
+    axis.legend(loc="upper right")
+    axis.grid(axis="y", alpha=0.25)
+    axis.bar_label(baseline_bars, fmt="%.3f", padding=3, fontsize=9)
+    axis.bar_label(candidate_bars, fmt="%.3f", padding=3, fontsize=9)
+
+    status = (
+        f"FINAL SELECTED ALGORITHM: {candidate_name.replace('_', ' ').upper()} - APPROVED FOR DEPLOYMENT"
+        if approved
+        else f"FINAL SELECTED ALGORITHM: {candidate_name.replace('_', ' ').upper()} - NOT APPROVED FOR DEPLOYMENT"
+    )
+    figure.text(
+        0.5,
+        0.015,
+        status,
+        ha="center",
+        color="#2E7D32" if approved else "#B42318",
+        weight="bold",
+    )
+    figure.tight_layout(rect=(0, 0.05, 1, 1))
+    figure.savefig(config.reports / "naive_vs_best_candidate.png", dpi=180)
+    plt.close(figure)
 
 
 def evaluate_and_checkpoint(config: PipelineConfig) -> dict:
@@ -36,6 +102,19 @@ def evaluate_and_checkpoint(config: PipelineConfig) -> dict:
     net_benefit_improvement = (
         candidate_economics["net_benefit_eur"] - baseline_economics["net_benefit_eur"]
     )
+    metric_deltas = {
+        key: candidate_metrics[key] - baseline_metrics[key]
+        for key in [
+            "accuracy",
+            "balanced_accuracy",
+            "f1_weighted",
+            "f1_macro",
+            "minority_recall",
+            "minority_precision",
+            "roc_auc",
+            "average_precision_delayed",
+        ]
+    }
 
     checks = {
         "roc_auc": {
@@ -69,30 +148,50 @@ def evaluate_and_checkpoint(config: PipelineConfig) -> dict:
     }
     goals_satisfied = all(check["passed"] for check in checks.values())
     decision = "PROCEED_TO_DEPLOYMENT" if goals_satisfied else "RETURN_TO_BUSINESS_UNDERSTANDING"
+    final_selected_model = selection["selected_model"]
+    deployment_model = selection["selected_model"] if goals_satisfied else None
+
+    _write_baseline_comparison_chart(
+        config,
+        selection["selected_model"],
+        candidate_metrics,
+        baseline_metrics,
+        goals_satisfied,
+    )
 
     evaluation = {
         "generated_at": utc_now(),
         "model": selection["selected_model"],
+        "best_experimental_candidate": selection["selected_model"],
+        "final_selected_model": final_selected_model,
+        "final_selection_status": (
+            "SELECTED_AND_APPROVED_FOR_DEPLOYMENT"
+            if goals_satisfied
+            else "SELECTED_FOR_PROTOTYPE_NOT_APPROVED_FOR_DEPLOYMENT"
+        ),
+        "deployment_model": deployment_model,
         "model_sha256": file_sha256(config.model_registry / "candidate_model.joblib"),
         "test_set_policy": "Used once after model and threshold were frozen on validation",
         "threshold": threshold,
         "candidate_test_metrics": candidate_metrics,
         "naive_baseline_test_metrics": baseline_metrics,
+        "candidate_minus_naive_baseline": metric_deltas,
         "candidate_business_economics": candidate_economics,
         "naive_baseline_business_economics": baseline_economics,
         "net_benefit_improvement_over_baseline_eur": net_benefit_improvement,
         "business_goal_checks": checks,
         "business_goals_satisfied": goals_satisfied,
         "checkpoint_decision": decision,
+        "decision_authority": "automated business-goal gate",
+        "decision_owner_role": "strategy_and_project_management",
+        "human_review_required": True,
         "next_action": (
             "Register/promote for deployment review"
             if goals_satisfied
             else "Revisit target, available predictors, and business framing; do not deploy"
         ),
     }
-    config.mlflow_store.mkdir(parents=True, exist_ok=True)
-    mlflow.set_tracking_uri(config.mlflow_store.resolve().as_uri())
-    mlflow.set_experiment("ecommerce-shipping-bpmn")
+    configure_mlflow(config)
     with mlflow.start_run(run_name=f"final_evaluation_{selection['selected_model']}") as run:
         mlflow.set_tags(
             {
@@ -117,19 +216,27 @@ def evaluate_and_checkpoint(config: PipelineConfig) -> dict:
     write_json(config.reports / "evaluation_report.json", evaluation)
     write_json(config.reports / "checkpoint_decision.json", evaluation)
 
+    evidence_statement = (
+        "The candidate passes every configured technical and business gate."
+        if goals_satisfied
+        else "The available features do not demonstrate reliable predictive and business value. "
+        "The result supports the null hypothesis and does not justify model promotion."
+    )
     insights = f"""# Modeling insights
 
 - Selected candidate: `{selection['selected_model']}` (selected using validation ROC-AUC).
+- Final selected algorithm: `{final_selected_model}`.
+- Approved deployment model: `{deployment_model or 'NONE'}`.
 - Frozen validation threshold: `{threshold:.2f}`.
 - Untouched-test ROC-AUC: `{candidate_metrics['roc_auc']:.4f}`; chance is `0.5000`.
 - Candidate weighted F1: `{candidate_metrics['f1_weighted']:.4f}`.
 - Naive majority weighted F1: `{baseline_metrics['f1_weighted']:.4f}`.
+- Weighted-F1 change versus baseline: `{metric_deltas['f1_weighted']:+.4f}`.
 - Minority-class recall: `{candidate_metrics['minority_recall']:.4f}`.
 - Estimated candidate net benefit: `EUR {candidate_economics['net_benefit_eur']:.2f}`.
 - Estimated baseline net benefit: `EUR {baseline_economics['net_benefit_eur']:.2f}`.
 
-The available features do not demonstrate reliable predictive signal. The result
-supports the null hypothesis and does not justify model promotion.
+{evidence_statement}
 """
     (config.reports / "modeling_insights.md").write_text(insights, encoding="utf-8")
 
@@ -142,6 +249,8 @@ The model and threshold were frozen using validation data. The test split was
 then used once for final assessment.
 
 - Candidate: `{selection['selected_model']}`
+- Final selected algorithm: `{final_selected_model}`
+- Approved deployment model: `{deployment_model or 'NONE'}`
 - Test ROC-AUC: `{candidate_metrics['roc_auc']:.4f}`
 - Test weighted F1: `{candidate_metrics['f1_weighted']:.4f}`
 - Baseline weighted F1: `{baseline_metrics['f1_weighted']:.4f}`
@@ -162,7 +271,7 @@ then used once for final assessment.
     cost_report = {
         "generated_at": utc_now(),
         "scenario": (
-            "Correct risk flags enable intervention; missed delayed/returned shipments are the "
+            "Correct delay flags enable intervention; missed delayed shipments are the "
             "costliest error; false alarms incur an intervention cost."
         ),
         "candidate": candidate_economics,
@@ -174,14 +283,14 @@ then used once for final assessment.
     cost_md = f"""# Cost and benefit analysis
 
 The positive class is **Delivered**. Therefore a true negative is a correctly
-identified delayed/returned shipment and a false positive is a missed risk.
+identified delayed shipment and a false positive is a missed delay.
 
 | Classification outcome | Candidate count | Business treatment | Unit value |
 |---|---:|---|---:|
-| Correct risk flag (TN) | {candidate_economics['confusion_matrix']['tn']} | intervention opportunity | EUR {config.benefit_correct_risk_flag:.2f} benefit |
-| Correct on-time (TP) | {candidate_economics['confusion_matrix']['tp']} | avoid unnecessary action | EUR {config.benefit_correct_on_time:.2f} benefit |
-| Missed risk (FP) | {candidate_economics['confusion_matrix']['fp']} | delay/return not flagged | EUR {config.cost_missed_risk:.2f} cost |
-| Unnecessary intervention (FN) | {candidate_economics['confusion_matrix']['fn']} | on-time order incorrectly flagged | EUR {config.cost_unnecessary_intervention:.2f} cost |
+| Correct delay flag (TN) | {candidate_economics['confusion_matrix']['tn']} | intervention opportunity | EUR {config.benefit_correct_risk_flag:.2f} benefit |
+| Correct delivered (TP) | {candidate_economics['confusion_matrix']['tp']} | avoid unnecessary action | EUR {config.benefit_correct_on_time:.2f} benefit |
+| Missed delay (FP) | {candidate_economics['confusion_matrix']['fp']} | delayed shipment not flagged | EUR {config.cost_missed_risk:.2f} cost |
+| Unnecessary intervention (FN) | {candidate_economics['confusion_matrix']['fn']} | delivered order incorrectly flagged as delayed | EUR {config.cost_unnecessary_intervention:.2f} cost |
 
 - Candidate estimated net benefit: **EUR {candidate_economics['net_benefit_eur']:.2f}**
 - Baseline estimated net benefit: **EUR {baseline_economics['net_benefit_eur']:.2f}**
@@ -194,7 +303,7 @@ operations must replace them with verified values before a real investment decis
 
     pros = [
         "The pipeline is reproducible and the test set is isolated from selection.",
-        "The chosen threshold identifies some at-risk shipments.",
+        "The chosen threshold identifies some delayed shipments.",
         "All business assumptions and failed gates are explicit and auditable.",
     ]
     cons = [
@@ -205,7 +314,7 @@ operations must replace them with verified values before a real investment decis
     ]
     objective_assessment = {
         "generated_at": utc_now(),
-        "objective": "Identify delayed/returned shipments early enough for useful intervention.",
+        "objective": "Identify delayed shipments early enough for useful intervention.",
         "pros": pros,
         "cons": cons,
         "conclusion": decision,
@@ -237,6 +346,10 @@ operations must replace them with verified values before a real investment decis
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["final_evaluation"] = candidate_metrics
     manifest["business_goals_satisfied"] = goals_satisfied
+    manifest["best_experimental_candidate"] = selection["selected_model"]
+    manifest["final_selected_model"] = final_selected_model
+    manifest["final_selection_status"] = evaluation["final_selection_status"]
+    manifest["deployment_model"] = deployment_model
     manifest["checkpoint_decision"] = decision
     manifest["registry_stage"] = "approved" if goals_satisfied else "rejected"
     manifest["promotion_status"] = "eligible" if goals_satisfied else "blocked"

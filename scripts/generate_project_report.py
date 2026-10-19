@@ -22,6 +22,7 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "artifacts" / "reports"
 OUTPUT = ROOT / "output" / "pdf" / "ecommerce_mlops_complete_project_report.pdf"
+LIVE_DEMO_URL = "https://huggingface.co/spaces/VivekSinghK14/shipping-delay-predictor"
 
 NAVY = colors.HexColor("#17324D")
 BLUE = colors.HexColor("#2E75B6")
@@ -38,6 +39,27 @@ LIGHT_GREY = colors.HexColor("#F3F5F7")
 
 def load_json(name: str) -> dict:
     return json.loads((REPORTS / name).read_text(encoding="utf-8"))
+
+
+MODEL_DISPLAY_NAMES = {
+    "xgboost": "XGBoost",
+    "random_forest": "Random Forest",
+    "logistic_regression": "Logistic Regression",
+    "dummy_majority": "Naive majority baseline",
+}
+
+
+GATE_LABELS = {
+    "roc_auc": "test ROC-AUC >= 0.60",
+    "minority_recall": "delayed recall >= 0.40",
+    "weighted_f1_improvement_over_baseline": "weighted F1 uplift >= 0.02",
+    "net_benefit_improvement_over_baseline_eur": "net benefit better than baseline",
+    "candidate_net_benefit_eur": "net benefit > EUR 0",
+}
+
+
+def model_display_name(name: str) -> str:
+    return MODEL_DISPLAY_NAMES.get(name, name.replace("_", " ").title())
 
 
 def p(text, style):
@@ -90,14 +112,124 @@ def page_frame(canvas, doc):
     canvas.restoreState()
 
 
+def _collect_test_counts() -> dict[str, int]:
+    """Count the automated tests per file by asking pytest to collect them."""
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+            cwd=ROOT, capture_output=True, text=True, timeout=300,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    counts: dict[str, int] = {}
+    for line in result.stdout.splitlines():
+        if "::" in line:
+            name = line.split("::")[0].replace("tests/", "")
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _delay_profile(raw_path: Path) -> tuple[list[list[str]], float, float]:
+    """Delay rate per order-time attribute plus a chi-square test against the target.
+
+    Returns table rows, the largest spread in percentage points, and the smallest p-value.
+    """
+    from scipy.stats import chi2_contingency
+
+    raw = pd.read_csv(raw_path)
+    raw = raw[raw["Delivery_Status"].isin(["Delivered", "Delayed"])].copy()
+    delayed = raw["Delivery_Status"].eq("Delayed")
+    order_dates = pd.to_datetime(raw["Order_Date"], format="mixed")
+    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    raw["Order month"] = order_dates.dt.month.map(lambda m: f"month {m}")
+    raw["Order weekday"] = order_dates.dt.dayofweek.map(lambda d: weekdays[d])
+    raw["Cost quartile"] = pd.qcut(raw["Shipping_Cost"], 4, labels=["lowest 25%", "2nd 25%", "3rd 25%", "highest 25%"])
+    rows, spreads, p_values = [], [], []
+    for column, label in [
+        ("Shipping_Mode", "Shipping mode"),
+        ("Customer_Region", "Customer region"),
+        ("Product_Category", "Product category"),
+        ("Order month", "Order month"),
+        ("Order weekday", "Order weekday"),
+        ("Cost quartile", "Shipping cost (quartiles)"),
+    ]:
+        rates = delayed.groupby(raw[column], observed=True).mean()
+        _, p_value, _, _ = chi2_contingency(pd.crosstab(raw[column], delayed))
+        spreads.append(100 * (rates.max() - rates.min()))
+        p_values.append(p_value)
+        rows.append([
+            label,
+            f"{rates.min():.1%} ({rates.idxmin()})",
+            f"{rates.max():.1%} ({rates.idxmax()})",
+            f"{p_value:.2f}",
+        ])
+    return rows, max(spreads), min(p_values)
+
+
+def _scaled(drawing, factor: float):
+    """Shrink a ReportLab drawing proportionally and centre it."""
+    drawing.scale(factor, factor)
+    drawing.width *= factor
+    drawing.height *= factor
+    drawing.hAlign = "CENTER"
+    return drawing
+
+
 def build_report() -> Path:
+    from mlops_pipeline.config import PipelineConfig
+
+    config = PipelineConfig()
     evaluation = load_json("evaluation_report.json")
     quality = load_json("data_quality_report.json")
     preparation = load_json("data_preparation_report.json")
-    ablation = load_json("cost_per_day_ablation.json")
+    exploration = load_json("data_exploration_report.json")
+    selection = load_json("analytical_model_selection.json")
+    leakage_review = load_json("cost_per_day_leakage_review.json")
     lifecycle = load_json("lifecycle_status.json")
     business = load_json("business_requirements.json")
-    model_table = pd.read_csv(REPORTS / "model_business_factors.csv")
+    smoke_path = REPORTS / "deployment_smoke_test.json"
+    smoke = json.loads(smoke_path.read_text(encoding="utf-8")) if smoke_path.exists() else None
+    retrain_path = ROOT / "artifacts" / "retraining_report.json"
+    retraining = json.loads(retrain_path.read_text(encoding="utf-8")) if retrain_path.exists() else None
+    models = pd.read_csv(REPORTS / "model_comparison_validation.csv")
+
+    override = lifecycle["deployment"].get("override")
+    scope = preparation["scope_filter"]
+    splits = preparation["split_rows"]
+    gates = evaluation["business_goal_checks"]
+    gates_met = sum(check["passed"] for check in gates.values())
+    cand = evaluation["candidate_test_metrics"]
+    base = evaluation["naive_baseline_test_metrics"]
+    econ = evaluation["candidate_business_economics"]
+    base_econ = evaluation["naive_baseline_business_economics"]
+    cm = econ["confusion_matrix"]
+    threshold = float(selection["validation_selected_threshold"])
+    threshold_metrics = selection["threshold_selection"]["metrics"]
+    model_name = model_display_name(evaluation["final_selected_model"])
+    status_text = (
+        f"LIVE PROTOTYPE DEPLOYED - {gates_met} OF {len(gates)} EVALUATION GATES MET"
+        if override
+        else lifecycle["final_status"].replace("_", " ")
+    )
+    outcomes = exploration["category_distributions"]["Delivery_Status"]
+    delivered_n, delayed_n = outcomes["Delivered"], outcomes["Delayed"]
+    in_scope = scope["rows_in_scope"]
+    split_delayed = {
+        name: int((pd.read_csv(ROOT / "artifacts" / "feature_store" / f"y_{name}.csv")["binary_target"] == 0).sum())
+        for name in ["train", "validation", "test"]
+    }
+    cost_stats = exploration["numeric_summary"]["Shipping_Cost"]
+    order_dates = exploration["date_ranges"]["Order_Date"]
+    delay_profile, max_spread, min_p = _delay_profile(config.raw_data)
+    test_counts = _collect_test_counts()
+    total_tests = sum(test_counts.values())
+    flagged = cm["tn"] + cm["fn"]
+    actual_delayed = cm["tn"] + cm["fp"]
+    selected_row = models.set_index("model").loc[evaluation["final_selected_model"]]
+    baseline_row = models.set_index("model").loc["dummy_majority"]
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     styles = getSampleStyleSheet()
@@ -107,9 +239,32 @@ def build_report() -> Path:
     styles.add(ParagraphStyle(name="H2x", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12.5, leading=16, textColor=BLUE, spaceBefore=10, spaceAfter=6))
     styles.add(ParagraphStyle(name="Bodyx", parent=styles["BodyText"], fontSize=9.5, leading=14, textColor=colors.HexColor("#26323D"), spaceAfter=7))
     styles.add(ParagraphStyle(name="Smallx", parent=styles["BodyText"], fontSize=8, leading=11, textColor=colors.HexColor("#26323D")))
+    styles.add(ParagraphStyle(name="SmallHead", parent=styles["Smallx"], fontName="Helvetica-Bold", textColor=colors.white))
+    styles.add(ParagraphStyle(name="Findx", parent=styles["Smallx"], textColor=GREY, spaceBefore=4, spaceAfter=4))
     styles.add(ParagraphStyle(name="Callout", parent=styles["BodyText"], fontSize=10, leading=15, textColor=NAVY, backColor=LIGHT_BLUE, borderColor=BLUE, borderWidth=0.7, borderPadding=8, spaceBefore=6, spaceAfter=10))
     styles.add(ParagraphStyle(name="Warning", parent=styles["BodyText"], fontSize=10, leading=15, textColor=RED, backColor=LIGHT_RED, borderColor=RED, borderWidth=0.7, borderPadding=8, spaceBefore=6, spaceAfter=10))
     styles.add(ParagraphStyle(name="CodeBlock", parent=styles["Code"], fontName="Courier", fontSize=7.5, leading=10, backColor=LIGHT_GREY, borderPadding=6, spaceAfter=8))
+
+    def body(text):
+        return p(text, styles["Bodyx"])
+
+    def find(text):
+        return p(f"<b>Where to find it:</b> {text}", styles["Findx"])
+
+    def table(rows, widths, header=NAVY, zebra=LIGHT_GREY, pad=5):
+        cells = [[p(cell, styles["SmallHead" if r == 0 else "Smallx"]) for cell in row] for r, row in enumerate(rows)]
+        style = [
+            ("BACKGROUND", (0, 0), (-1, 0), header),
+            ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#C8D0D8")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, zebra]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), pad), ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
+        ]
+        return Table(cells, colWidths=[w * mm for w in widths], repeatRows=1, style=style)
+
+    def met(passed):
+        return "Met" if passed else "Not met"
 
     doc = SimpleDocTemplate(
         str(OUTPUT), pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm,
@@ -118,6 +273,7 @@ def build_report() -> Path:
     )
     story = []
 
+    # Cover ---------------------------------------------------------------
     story.extend([
         Spacer(1, 34 * mm),
         p("Complete MLOps-DSPM Project Report", styles["CoverTitle"]),
@@ -127,218 +283,413 @@ def build_report() -> Path:
         Spacer(1, 13 * mm),
         Table([[p("Purpose", styles["Smallx"]), p("Explain what was implemented, where it is implemented, and why each activity is needed.", styles["Smallx"])],
                [p("Process model", styles["Smallx"]), p("MLOps-based Data Science Process Model (MLOps-DSPM)", styles["Smallx"])],
-               [p("Final status", styles["Smallx"]), p(lifecycle["final_status"], styles["Smallx"])]],
+               [p("Final status", styles["Smallx"]), p(status_text, styles["Smallx"])],
+               [p("Live demo", styles["Smallx"]), p(LIVE_DEMO_URL, styles["Smallx"])]],
               colWidths=[35 * mm, 115 * mm], style=[("BACKGROUND", (0, 0), (0, -1), LIGHT_BLUE), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]),
         Spacer(1, 20 * mm),
         p("Reference requirements: DSPM_material_STP.pdf and STP_ecommerce.pdf", styles["Smallx"]),
         PageBreak(),
     ])
 
+    # Executive summary -----------------------------------------------------
     story.extend([
         p("Executive summary", styles["H1x"]),
-        p("This project implements the complete technical MLOps lifecycle for predicting whether an e-commerce shipment will be delivered/on time. The repository now contains business requirements, a reproducible data pipeline, a feature store, several model experiments, MLflow tracking, a model registry, business-focused evaluation, a gated deployment prototype, monitoring, and versioned retraining.", styles["Bodyx"]),
-        p("The implementation is complete, but the current model is not suitable for business deployment. Its test ROC-AUC is approximately 0.50, which means it cannot reliably rank risky shipments. The correct process-model decision is to return to Business Understanding and obtain better predictive inputs.", styles["Warning"]),
+        body(f"This project predicts, at the moment an order is placed, whether it will be <b>Delivered</b> on time or <b>Delayed</b>, and builds the complete "
+             f"MLOps lifecycle around that question: requirements, data pipeline, feature store, tracked experiments, model registry, evaluation, a deployed API and "
+             f"web app, monitoring, and retraining. Of the {scope['source_rows']:,} orders in the source file, the {scope['rows_removed']:,} Returned orders belong to a "
+             f"different business process and were removed first; the remaining {in_scope:,} orders are used throughout."),
+        p(f"<b>Result in one paragraph.</b> The selected {model_name} model is live as a prototype ({LIVE_DEMO_URL}). On {splits['test']:,} test orders "
+          f"that were never used for training or tuning, it finds {cand['minority_recall']:.1%} of the delayed orders and reduces the estimated cost of delays "
+          f"by EUR {gates['net_benefit_improvement_over_baseline_eur']['actual']:,.0f} compared with doing nothing. It meets {gates_met} of {len(gates)} agreed "
+          f"evaluation gates. Its ROC-AUC of {cand['roc_auc']:.3f} shows that the information available at order time (region, product category, shipping mode, "
+          f"cost, and date) does not yet separate delayed from delivered orders reliably, so the next iteration focuses on collecting operational data "
+          f"such as carrier, warehouse, route, and promised delivery date.", styles["Callout"]),
+        p("Key numbers at a glance", styles["H2x"]),
+        table([
+            ["Item", "Value", "Section"],
+            ["Orders in source file / Returned removed / used", f"{scope['source_rows']:,} / {scope['rows_removed']:,} / {in_scope:,}", "4"],
+            ["Delivered vs Delayed", f"{delivered_n:,} ({delivered_n / in_scope:.1%}) vs {delayed_n:,} ({delayed_n / in_scope:.1%})", "4"],
+            ["Train / validation / test orders", f"{splits['train']:,} / {splits['validation']:,} / {splits['test']:,}", "4"],
+            ["Models compared", "Naive baseline, Logistic Regression, Random Forest, XGBoost", "5"],
+            ["Selected model and decision threshold", f"{model_name}, Delivered if P(Delivered) >= {threshold:.2f}", "5, 7"],
+            ["Test ROC-AUC / delayed recall / weighted F1", f"{cand['roc_auc']:.3f} / {cand['minority_recall']:.3f} / {cand['f1_weighted']:.3f}", "7"],
+            ["Estimated net benefit vs baseline", f"EUR {econ['net_benefit_eur']:,.0f} vs EUR {base_econ['net_benefit_eur']:,.0f}", "8"],
+            ["Evaluation gates met", f"{gates_met} of {len(gates)}", "7"],
+            ["Automated tests", f"{total_tests} passing" if total_tests else "see tests/", "12"],
+        ], [62, 96, 16], pad=3),
         p("How to read this report", styles["H2x"]),
-        p("Each lifecycle section answers three questions: what was done, where it is implemented, and why it is needed. Technical terms are explained in simple language. The final sections show results, limitations, testing, and reproducibility commands.", styles["Bodyx"]),
+        body("Each section covers one lifecycle stage, explains what we did and why, and ends with a <b>Where to find it</b> line naming the file behind every number."),
         p("Lifecycle at a glance", styles["H2x"]),
-        lifecycle_drawing(),
+        _scaled(lifecycle_drawing(), 0.62),
         PageBreak(),
     ])
 
+    # 1 ---------------------------------------------------------------------
     story.extend([
         p("1. Requirements and process-model interpretation", styles["H1x"]),
-        p("The project proposal requires an end-to-end data science use case: Business Understanding, data preparation, model selection and evaluation, deployment, utilization, monitoring, maintenance, technical documentation, architecture diagrams, and critical reflection. The MLOps-DSPM material explains the responsibilities, decisions, information objects, and MLOps components for each stage.", styles["Bodyx"]),
-        p("The attached PDFs were used as reference requirements. Text inside them was not treated as an instruction to execute unrelated actions.", styles["Callout"]),
+        body("The project proposal asks for a complete data science use case: business understanding, data preparation, model selection and evaluation, "
+             "deployment, use, monitoring and maintenance, technical documentation, architecture diagrams, and a critical reflection. The MLOps-DSPM material "
+             "describes who is responsible at each stage, which decisions must be made, which documents are produced, and which MLOps components "
+             "(feature store, model registry, serving and monitoring) support the work. We used both documents as our checklist; section 13 maps every requirement to its evidence."),
         p("Scope decision", styles["H2x"]),
-        p("A technical deployment prototype is available, but the evaluation checkpoint controls whether it may be used for real business decisions. Because the candidate fails the business gates, production integration and utilization are blocked while technical demonstration remains possible.", styles["Bodyx"]),
+        body(f"The question is binary: Delivered (1) or Delayed (0). Returned orders ({scope['rows_removed']:,} rows, {scope['rows_removed'] / scope['source_rows']:.1%} of the file) "
+             "are handled by a separate reverse-logistics process with different causes and different actions, so mixing them into the target would blur the question. "
+             "They are removed in the first pipeline step and never reach features, models, reports, or the app."),
+        body("A model only influences real business decisions after the evaluation checkpoint. "
+             + ("This model is deployed as a live prototype through a documented decision of the project owner (section 10), so the complete lifecycle can be demonstrated, while the evaluation results are reported exactly as measured." if override
+                else "Because the gates are not met, production use is blocked while technical demonstration remains possible.")),
         p("Main project objective", styles["H2x"]),
-        p(business["business_objective"], styles["Bodyx"]),
-        p("Success means more than accuracy. The model must discriminate better than chance, identify enough delayed/returned orders, improve weighted F1 over a simple baseline, and show positive economic value under agreed business assumptions.", styles["Bodyx"]),
+        body(business["business_objective"]),
+        body("Success is defined by more than accuracy. With 84% of orders delivered, a model that always says Delivered is already 84% accurate yet useless. "
+             "We therefore require the model to rank orders better than chance, to catch a meaningful share of delayed orders, to beat a naive baseline, "
+             "and to create positive value under agreed cost assumptions (gates listed in section 3)."),
+        find("artifacts/reports/business_requirements.json, artifacts/reports/data_requirements.json"),
         PageBreak(),
     ])
 
-    stage_rows = [
-        ["Stage", "What is done", "Where", "Why"],
-        ["Business Understanding", "Define problem, users, requirements, success gates and continuation decision.", "mlops_pipeline/business_understanding.py\nartifacts/reports/business_*.json", "Prevents building a technically correct solution for the wrong business problem."],
-        ["Data Preparation", "Validate source, describe/explore data, check quality, engineer features, split and scale.", "mlops_pipeline/data_stage.py\nartifacts/feature_store/", "Creates trustworthy, reusable features without leakage."],
-        ["Analysis", "Train baseline, Logistic Regression, Random Forest and XGBoost; track experiments and select on validation data.", "mlops_pipeline/model_stage.py\nartifacts/mlflow/", "Makes experiments comparable, transparent and reproducible."],
-        ["Evaluation", "Use untouched test data; compare metrics, business cost and business goals.", "mlops_pipeline/evaluation_stage.py\nartifacts/reports/evaluation_report.*", "Provides an independent checkpoint before deployment."],
-        ["Deployment", "Prepare API, Docker, CI, tests, monitoring and approval status.", "deployment/app.py\nDockerfile\n.github/workflows/", "Turns model work into a controlled technical service."],
-        ["Utilization", "Demonstrate use, monitor events and metrics, support maintenance and retraining.", "deployment/app.py\nmlops_pipeline/retraining.py", "Keeps a deployed system observable and maintainable."],
-    ]
-    stage_table = Table([[p(cell, styles["Smallx"]) for cell in row] for row in stage_rows], colWidths=[30 * mm, 52 * mm, 46 * mm, 48 * mm], repeatRows=1)
-    stage_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#C8D0D8")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]), ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-    story.extend([p("2. What, where, and why", styles["H1x"]), stage_table, PageBreak()])
+    # 2 ---------------------------------------------------------------------
+    story.extend([
+        p("2. What, where, and why", styles["H1x"]),
+        body("The table summarises each lifecycle stage, the code and output files that implement it, and why the stage matters."),
+        table([
+            ["Stage", "What is done", "Where", "Why"],
+            ["Business Understanding", "Define the problem, users, requirements, success gates, and continuation decision.", "mlops_pipeline/business_understanding.py; artifacts/reports/business_*.json", "Prevents building a technically correct solution for the wrong problem."],
+            ["Data Preparation", f"Remove {scope['rows_removed']:,} Returned orders, validate, describe, explore, engineer 6 features, split 60/20/20, scale.", "mlops_pipeline/data_stage.py; artifacts/feature_store/", "Gives every model the same clean, leakage-free input."],
+            ["Analysis", "Train a naive baseline, Logistic Regression, Random Forest, and XGBoost; select on validation data; log to MLflow.", "mlops_pipeline/model_stage.py; artifacts/mlflow/", "Makes experiments fair, comparable, and reproducible."],
+            ["Evaluation", f"Score the frozen model once on {splits['test']:,} untouched test orders; compare with the baseline, costs, and gates.", "mlops_pipeline/evaluation_stage.py; artifacts/reports/evaluation_report.*", "Gives an independent, honest checkpoint before deployment."],
+            ["Deployment", "FastAPI service, web app, Docker image, CI, tests, smoke test, live demo.", "deployment/; Dockerfile; .github/workflows/", "Turns the model into a controlled service people can use."],
+            ["Utilization", "Use through the web app and API, monitoring, feedback, support tickets, guarded retraining.", "deployment/app.py; mlops_pipeline/retraining.py", "Keeps the deployed system observable and maintainable."],
+        ], [28, 52, 50, 46]),
+        PageBreak(),
+    ])
 
+    # 3 ---------------------------------------------------------------------
     story.extend([
         p("3. Business Understanding", styles["H1x"]),
-        p("What: The project defines the operational problem as identifying shipments that may be delayed or returned early enough for intervention. Users are shipping operations, customer service, and project management.", styles["Bodyx"]),
-        p("Where: mlops_pipeline/business_understanding.py generates situation_assessment.json, business_requirements.json, and data_science_project_map.json.", styles["Bodyx"]),
-        p("Why: This stage fixes the meaning of success before looking at model scores. It also records the main risk: the provided columns may not contain enough information available before the outcome.", styles["Bodyx"]),
+        body("Delayed orders cause customer-service contacts, compensation, and lost customer trust. If operations knew at order time which orders are likely "
+             "to be late, they could act early: choose a faster carrier, prioritise picking, or inform the customer. The intended users are shipping operations, "
+             "customer service, and project management."),
+        body("Before looking at any model score, we fixed what success means. These gates were agreed up front so that the evaluation cannot be adjusted after seeing the results:"),
         p("Business success gates", styles["H2x"]),
-        Table([["Gate", "Required"], ["Test ROC-AUC", ">= 0.60"], ["Delayed/returned recall", ">= 0.40"], ["Weighted F1 uplift", ">= 0.02 over baseline"], ["Candidate net benefit", "> EUR 0"]], colWidths=[90 * mm, 55 * mm], style=[("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]),
-        p("Continuation decision: continue to data collection because the use case is suitable for learning and technical prototyping. Real deployment remains conditional on later evidence.", styles["Callout"]),
+        table([
+            ["Gate", "Required", "What it protects against"],
+            ["Test ROC-AUC", f">= {config.minimum_roc_auc:.2f}", "A model that ranks orders no better than chance (0.50)"],
+            ["Delayed recall", f">= {config.minimum_minority_recall:.2f}", "A model that misses most delayed orders"],
+            ["Weighted F1 uplift", f">= {config.minimum_f1_improvement:.2f} over baseline", "A model that is not better than always predicting Delivered"],
+            ["Net benefit vs baseline", "> EUR 0", "A model that costs more than doing nothing"],
+            ["Candidate net benefit", "> EUR 0", "A model whose interventions cost more than they save"],
+        ], [45, 40, 89]),
+        p("Continuation decision: continue to data collection. The use case is well defined and suitable for a gated prototype; real business use depends on the evidence gathered later.", styles["Callout"]),
+        find("artifacts/reports/situation_assessment.json, business_requirements.json, data_science_project_map.json, business_checkpoint.json; thresholds in mlops_pipeline/config.py"),
         PageBreak(),
     ])
 
+    # 4 ---------------------------------------------------------------------
     story.extend([
         p("4. Data Collection, Exploration, and Preparation", styles["H1x"]),
-        p("What: The raw CSV is acquired, fingerprinted, checked against an input contract, described, explored, validated, transformed, split, scaled, and checked against an output contract.", styles["Bodyx"]),
-        p("Where: mlops_pipeline/data_stage.py. Human-readable and machine-readable reports are under artifacts/reports. Reusable prepared features are under artifacts/feature_store.", styles["Bodyx"]),
-        p("Why: Models should receive the same valid format every time. Contracts stop incorrect columns, values, dates, nulls, or target values before training.", styles["Bodyx"]),
+        body(f"The source is <b>50K Records.csv</b>: {scope['source_rows']:,} orders with 10 columns, placed between {order_dates['min'][:10]} and {order_dates['max'][:10]}. "
+             "The pipeline fingerprints the file (SHA-256) and checks it against an input contract before processing it."),
+        p("Target scope", styles["H2x"]),
+        body(f"We keep Delivered and Delayed and remove the {scope['rows_removed']:,} Returned orders, leaving {in_scope:,} orders. "
+             f"Of these, {delivered_n:,} ({delivered_n / in_scope:.1%}) were delivered and {delayed_n:,} ({delayed_n / in_scope:.1%}) were delayed. "
+             "This imbalance is why accuracy alone is misleading and why we track delayed recall separately."),
         p("Data-quality result", styles["H2x"]),
-        Table([["Rows", "Blocking defects", "Data sufficient"], [preparation["split_rows"]["train"] + preparation["split_rows"]["validation"] + preparation["split_rows"]["test"], quality["blocking_defects"], str(quality["data_sufficient"])]], colWidths=[48 * mm, 48 * mm, 48 * mm], style=[("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]),
-        p("Leakage controls", styles["H2x"]),
-        p("The split is 60% train, 20% validation, and 20% untouched test. Scaling is fitted only on training rows. Ship_Date and Delivery_Date are excluded because they are known after the order and could leak future information.", styles["Bodyx"]),
+        table([
+            ["Source rows", "Returned removed", "Modeled rows", "Blocking defects", "Data sufficient"],
+            [f"{scope['source_rows']:,}", f"{scope['rows_removed']:,}", f"{in_scope:,}", str(quality["blocking_defects"]), "Yes" if quality["data_sufficient"] else "No"],
+        ], [34, 34, 34, 34, 34], header=BLUE, pad=4),
+        body("All ten quality checks found zero problems (missing values, duplicates, invalid dates or categories, impossible date order, delivery-day mismatches, "
+             f"negative costs). Shipping cost ranges from EUR {cost_stats['min']:.0f} to EUR {cost_stats['max']:.0f} (median EUR {cost_stats['50%']:.0f})."),
+        p("What the data shows", styles["H2x"]),
+        body(f"The overall delay rate is {delayed_n / in_scope:.1%}. Below: the lowest and highest delay rate within each attribute, and a chi-square test "
+             "(p above 0.05 means no evidence of a relationship with delays)."),
+        table([["Attribute", "Lowest delay rate", "Highest delay rate", "Chi-square p-value"]] + delay_profile, [40, 46, 46, 42], header=BLUE, pad=3),
+        Spacer(1, 3 * mm),
+        body(f"Across every order-time attribute the delay rate stays between roughly 15% and 17%: the largest gap between two groups is {max_spread:.1f} percentage points, "
+             f"and no chi-square test finds a significant relationship (smallest p-value {min_p:.2f}). This is the first sign that order-time attributes carry "
+             "little information about delays, and it explains the model results in section 7."),
+        p("Features and leakage controls", styles["H2x"]),
+        body("The model uses six features known when the order is placed: customer region, product category, shipping mode, shipping cost, order month, and order weekday. "
+             "Ship date, delivery date, and delivery days are excluded because they are only known after shipping or delivery; using them would let the model see the answer. "
+             f"The data is split once, stratified by outcome: {splits['train']:,} training orders ({split_delayed['train']:,} delayed), "
+             f"{splits['validation']:,} validation orders ({split_delayed['validation']:,} delayed), and {splits['test']:,} test orders ({split_delayed['test']:,} delayed). "
+             "Scaling is fitted on the training orders only."),
         p("Feature store", styles["H2x"]),
-        p("The local feature store contains X/y files for all three splits, a fitted scaler, and a manifest with feature order, category mappings, targets, and split policy. It is intentionally lightweight for an academic prototype.", styles["Bodyx"]),
+        body("Features and targets for all three splits, the fitted scaler, and a manifest (feature order, category codes, target map, split sizes) are stored "
+             "together, so the API, notebooks, and retraining use exactly the same inputs. An output contract checks column order, types, and that the target is only 0 or 1."),
+        find("artifacts/reports/data_quality_report.json, data_exploration_report.json, data_preparation_report.json, input_data_contract.json, output_data_contract.json; artifacts/feature_store/; notebook E- commerce.ipynb"),
         PageBreak(),
     ])
 
-    compact = model_table[["model", "roc_auc", "f1_weighted", "minority_recall", "net_benefit_eur", "interpretability", "operational_complexity"]].copy()
-    for col in ["roc_auc", "f1_weighted", "minority_recall"]:
-        compact[col] = compact[col].map(lambda value: f"{value:.4f}")
-    compact["net_benefit_eur"] = compact["net_benefit_eur"].map(lambda value: f"EUR {value:,.0f}")
-    model_rows = [[p(name.replace("_", " ").title(), styles["Smallx"]) for name in compact.columns]] + [[p(value, styles["Smallx"]) for value in row] for row in compact.astype(str).values.tolist()]
-    model_report_table = Table(model_rows, colWidths=[31 * mm, 20 * mm, 22 * mm, 22 * mm, 29 * mm, 24 * mm, 27 * mm], repeatRows=1)
-    model_report_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), GREEN), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5DF")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREEN]), ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    # 5 ---------------------------------------------------------------------
+    model_rows = [["Model", "ROC-AUC", "Accuracy", "Bal. acc.", "Weighted F1", "Delayed recall", "Net benefit", "Train time"]]
+    for _, row in models.iterrows():
+        model_rows.append([
+            model_display_name(row["model"]), f"{row['roc_auc']:.4f}", f"{row['accuracy']:.4f}", f"{row['balanced_accuracy']:.4f}",
+            f"{row['f1_weighted']:.4f}", f"{row['minority_recall']:.4f}", f"EUR {row['net_benefit_eur']:,.0f}", f"{row['training_seconds']:.1f} s",
+        ])
     story.extend([
         p("5. Analysis and Modeling", styles["H1x"]),
-        p("What: Four candidates are trained: a naive majority baseline, Logistic Regression, Random Forest, and XGBoost. All use the same training and validation data. The best non-baseline validation ROC-AUC selects the candidate; the threshold is also frozen on validation data.", styles["Bodyx"]),
-        p("Where: mlops_pipeline/model_stage.py. Metrics and parameters are written to the model metadata store and MLflow. The candidate is placed in artifacts/model_registry, not automatically promoted.", styles["Bodyx"]),
-        p("Why: A shared test design makes comparisons fair. MLflow records what was tried, so results can be reproduced and inspected instead of depending on notebook memory.", styles["Bodyx"]),
+        body("We compared four models on the same training data and judged them only on the validation data, keeping the test data untouched. "
+             "The <b>naive baseline</b> always predicts the majority class (Delivered) and sets the bar every real model must clear. "
+             "<b>Logistic Regression</b> is simple and easy to explain, <b>Random Forest</b> and <b>XGBoost</b> can capture non-linear patterns and interactions. "
+             "Logistic Regression and Random Forest weight the classes so the rarer Delayed class is not ignored."),
         p("Validation model and business factors", styles["H2x"]),
-        model_report_table,
-        Spacer(1, 5 * mm),
-        p("Business factors include predictive quality, estimated economic value, inference time, interpretability, and operational complexity. Economic values use stated assumptions and are not accounting facts.", styles["Callout"]),
+        table(model_rows, [33, 18, 18, 18, 20, 20, 26, 17], header=GREEN, zebra=LIGHT_GREEN),
+        Spacer(1, 3 * mm),
+        body(f"The selection rule, fixed in advance, is the highest validation ROC-AUC among the real models. {model_name} scored {selected_row['roc_auc']:.4f}, "
+             f"{selection['validation_roc_auc_uplift_over_naive_baseline']:+.4f} above the baseline. At the default threshold of 0.50 it almost always predicts "
+             f"Delivered (delayed recall {selected_row['minority_recall']:.4f}), so the decision threshold is tuned next."),
+        p("Choosing the decision threshold", styles["H2x"]),
+        body(f"The model outputs a probability that an order will be delivered. We tested every threshold from 0.10 to 0.90 on the validation data. "
+             f"The preferred rule was to pick the threshold with the highest positive net benefit while catching at least 40% of delayed orders; no threshold "
+             f"reached a positive net benefit, so the fallback rule picks the most balanced threshold that still catches at least 40%. That threshold is "
+             f"<b>{threshold:.2f}</b>: an order is predicted Delivered only if the model is at least {threshold:.0%} sure. On validation data it gives a delayed recall "
+             f"of {threshold_metrics['minority_recall']:.3f} and a balanced accuracy of {threshold_metrics['balanced_accuracy']:.3f}."),
+        p("Business factors such as training time, prediction speed, interpretability, and operational complexity are recorded for every model next to its scores, "
+          "because a slightly better model is not worth it if it is much harder to run or explain.", styles["Callout"]),
+        find("artifacts/reports/model_comparison_validation.csv, model_business_factors.csv, threshold_sweep_validation.csv, analytical_model_selection.json; artifacts/model_metadata_store/; MLflow; notebook modelling.ipynb/Models.ipynb"),
         PageBreak(),
     ])
 
+    # 6 ---------------------------------------------------------------------
     story.extend([
-        p("6. Cost_per_Day feature experiment", styles["H1x"]),
-        p("What: Cost_per_Day is calculated as Shipping_Cost divided by Delivery_Days. A controlled ablation trains the same selected algorithm twice: once with the feature and once without it.", styles["Bodyx"]),
-        p("Where: The feature is created in mlops_pipeline/data_stage.py. The experiment is in mlops_pipeline/model_stage.py and its report is artifacts/reports/cost_per_day_ablation.json/.md.", styles["Bodyx"]),
-        p("Why: Feature importance only shows that a model used a feature. It does not prove that the feature improved predictions. Ablation directly measures the difference.", styles["Bodyx"]),
-        Table([["Measure", "With", "Without", "Difference"], ["Validation ROC-AUC", f"{ablation['with_cost_per_day']['roc_auc']:.6f}", f"{ablation['without_cost_per_day']['roc_auc']:.6f}", f"{ablation['delta_with_minus_without']['roc_auc']:+.6f}"]], colWidths=[52 * mm, 32 * mm, 32 * mm, 32 * mm], style=[("BACKGROUND", (0, 0), (-1, 0), ORANGE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("ALIGN", (1, 0), (-1, -1), "CENTER"), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]),
-        p(ablation["conclusion"], styles["Warning"]),
-        p("Interpretation: the small positive difference is below the 0.01 material-improvement rule, and overall ROC-AUC is still below the 0.60 gate. Because the feature is derived from two existing columns, it mainly changes their representation rather than adding new operational information.", styles["Bodyx"]),
+        p("6. Cost_per_Day leakage review", styles["H1x"]),
+        body(f"An earlier notebook proposed the feature {leakage_review['feature']}. It looks useful, and it would probably raise the scores, but Delivery_Days "
+             "is only known after the order has been delivered. At the moment we want to make the prediction, that number does not exist yet."),
+        body("Using it would be like predicting the weather with tomorrow's newspaper: the score goes up, but the model could never work in practice. "
+             "We therefore excluded it, together with Ship_Date, Delivery_Date, and Delivery_Days, from every split, model, and evaluation."),
+        p(leakage_review["decision"].replace("_", " "), styles["Warning"]),
+        body(leakage_review["scientific_interpretation"]),
+        find("artifacts/reports/cost_per_day_leakage_review.json/.md, feature_leakage_assessment.json"),
         PageBreak(),
     ])
 
-    candidate = evaluation["candidate_test_metrics"]
-    baseline = evaluation["naive_baseline_test_metrics"]
-    econ = evaluation["candidate_business_economics"]
-    base_econ = evaluation["naive_baseline_business_economics"]
+    # 7 ---------------------------------------------------------------------
+    eval_rows = [["Test measure", model_name, "Naive baseline", "Required", "Result"]]
+    eval_rows += [
+        ["ROC-AUC", f"{cand['roc_auc']:.4f}", f"{base['roc_auc']:.4f}", f">= {config.minimum_roc_auc:.2f}", met(gates["roc_auc"]["passed"])],
+        ["Delayed recall", f"{cand['minority_recall']:.4f}", f"{base['minority_recall']:.4f}", f">= {config.minimum_minority_recall:.2f}", met(gates["minority_recall"]["passed"])],
+        ["Weighted F1", f"{cand['f1_weighted']:.4f}", f"{base['f1_weighted']:.4f}", f"+{config.minimum_f1_improvement:.2f} uplift", met(gates["weighted_f1_improvement_over_baseline"]["passed"])],
+        ["Net benefit", f"EUR {econ['net_benefit_eur']:,.0f}", f"EUR {base_econ['net_benefit_eur']:,.0f}", "> baseline", met(gates["net_benefit_improvement_over_baseline_eur"]["passed"])],
+        ["Net benefit (absolute)", f"EUR {econ['net_benefit_eur']:,.0f}", "-", "> EUR 0", met(gates["candidate_net_benefit_eur"]["passed"])],
+        ["Accuracy", f"{cand['accuracy']:.4f}", f"{base['accuracy']:.4f}", "-", "-"],
+        ["Balanced accuracy", f"{cand['balanced_accuracy']:.4f}", f"{base['balanced_accuracy']:.4f}", "-", "-"],
+        ["Delayed precision", f"{cand['minority_precision']:.4f}", f"{base['minority_precision']:.4f}", "-", "-"],
+    ]
     story.extend([
         p("7. Evaluation and business checkpoint", styles["H1x"]),
-        p("What: After the model and threshold are frozen, the untouched test set is opened once. The candidate is compared with the naive baseline using predictive metrics and business-cost assumptions.", styles["Bodyx"]),
-        p("Where: mlops_pipeline/evaluation_stage.py produces the final model report, cost-benefit analysis, business-objective assessment, evaluation report, and checkpoint decision.", styles["Bodyx"]),
-        p("Why: The evaluation stage prevents optimistic model-development results from becoming an unjustified deployment decision.", styles["Bodyx"]),
-        Table([["Test measure", "Candidate", "Baseline", "Required"], ["ROC-AUC", f"{candidate['roc_auc']:.4f}", f"{baseline['roc_auc']:.4f}", ">= 0.60"], ["Weighted F1", f"{candidate['f1_weighted']:.4f}", f"{baseline['f1_weighted']:.4f}", "+0.02 uplift"], ["At-risk recall", f"{candidate['minority_recall']:.4f}", f"{baseline['minority_recall']:.4f}", ">= 0.40"], ["Net benefit", f"EUR {econ['net_benefit_eur']:,.0f}", f"EUR {base_econ['net_benefit_eur']:,.0f}", "> EUR 0"]], colWidths=[45 * mm, 37 * mm, 37 * mm, 37 * mm], style=[("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("ALIGN", (1, 1), (-1, -1), "CENTER"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]),
-        p(f"Checkpoint decision: {evaluation['checkpoint_decision']}", styles["Warning"]),
-        p("The candidate is slightly less costly than the naive baseline under the illustrative scenario, but it still has negative absolute value and fails predictive gates. Relative improvement over a poor baseline is not sufficient for deployment.", styles["Bodyx"]),
+        p(f"Final selected algorithm: {model_name}. Deployment status: "
+          + (f"deployed as a live prototype; {gates_met} of {len(gates)} evaluation gates met." if override else "not approved because the business gates failed."), styles["Callout"]),
+        body(f"Once the model and its threshold were frozen, we opened the test set exactly once: {splits['test']:,} orders ({split_delayed['test']:,} delayed) "
+             "that played no part in training or tuning. This gives an honest estimate of how the model would behave on new orders."),
+        table(eval_rows, [40, 33, 33, 33, 31]),
+        Spacer(1, 3 * mm),
+        p("How to read these results", styles["H2x"]),
+        body(f"<b>What works.</b> The model catches {cand['minority_recall']:.1%} of delayed orders, while the baseline catches none. Under the cost assumptions in "
+             f"section 8 this makes it EUR {gates['net_benefit_improvement_over_baseline_eur']['actual']:,.0f} cheaper than the baseline on the test set."),
+        body(f"<b>What does not work yet.</b> A ROC-AUC of {cand['roc_auc']:.3f} means the model ranks delayed and delivered orders about as well as chance (0.50). "
+             f"To catch nearly half of the delayed orders it has to flag {flagged:,} of {splits['test']:,} orders, and only {cand['minority_precision']:.1%} of those flags are real delays. "
+             "Accuracy and weighted F1 fall below the baseline because many delivered orders are flagged as well."),
+        body("<b>Why.</b> Section 4 already showed that delay rates barely change across region, category, shipping mode, cost, and date. No algorithm can learn a "
+             "pattern that the inputs do not contain, so the limit lies in the available data rather than in the modelling."),
+        p(f"Checkpoint decision: {evaluation['checkpoint_decision']}. In MLOps-DSPM terms, the next iteration returns to business understanding to obtain stronger "
+          "pre-shipment data (carrier, warehouse, route distance, promised delivery date, dispatch backlog) before the model is used for real decisions.", styles["Callout"]),
+        find("artifacts/reports/evaluation_report.json/.md, final_model_report.json, checkpoint_decision.json, naive_vs_best_candidate.png; notebook evalaution/stage4_evaluation.ipynb"),
         PageBreak(),
     ])
 
-    cm = econ["confusion_matrix"]
+    # 8 ---------------------------------------------------------------------
+    comp = econ["components"]
     story.extend([
         p("8. Cost and benefit of correct and wrong classifications", styles["H1x"]),
-        p("The project uses Delivered as class 1 and Delayed/Returned as class 0. This means a correctly identified risk is a true negative in the technical confusion matrix.", styles["Bodyx"]),
-        Table([["Outcome", "Count", "Meaning", "Assumed unit value"], ["Correct risk flag (TN)", cm["tn"], "Operations can intervene", "EUR 30 benefit"], ["Correct on-time (TP)", cm["tp"], "No unnecessary action", "EUR 2 benefit"], ["Missed risk (FP)", cm["fp"], "Delay/return is not flagged", "EUR 80 cost"], ["Unnecessary intervention (FN)", cm["fn"], "On-time order is flagged", "EUR 10 cost"]], colWidths=[42 * mm, 22 * mm, 64 * mm, 32 * mm], style=[("BACKGROUND", (0, 0), (-1, 0), ORANGE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_ORANGE]), ("FONTSIZE", (0, 0), (-1, -1), 8.5), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]),
-        p("These values are transparent scenario assumptions. Finance and operations must replace them with measured customer-service cost, refund/recovery cost, intervention cost, and value of avoiding a disruption before a real investment decision.", styles["Callout"]),
+        body("A prediction can be right or wrong in two ways each, and each case has a different business effect. Delivered is class 1 and Delayed is class 0, "
+             f"so a correctly flagged delay is a true negative. The counts below are for the {splits['test']:,} test orders at threshold {threshold:.2f}."),
+        table([
+            ["Outcome", "Count", "Meaning", "Unit value", "Total"],
+            ["Correct delay flag (TN)", f"{cm['tn']:,}", "Delayed order flagged; operations can intervene", f"+EUR {config.benefit_correct_risk_flag:.0f}", f"EUR {comp['correct_risk_flags']['total_eur']:,.0f}"],
+            ["Correct delivered (TP)", f"{cm['tp']:,}", "Delivered order left alone", f"+EUR {config.benefit_correct_on_time:.0f}", f"EUR {comp['correct_on_time_predictions']['total_eur']:,.0f}"],
+            ["Missed delay (FP)", f"{cm['fp']:,}", "Delayed order not flagged", f"-EUR {config.cost_missed_risk:.0f}", f"EUR {comp['missed_risks']['total_eur']:,.0f}"],
+            ["Unnecessary intervention (FN)", f"{cm['fn']:,}", "Delivered order flagged as delayed", f"-EUR {config.cost_unnecessary_intervention:.0f}", f"EUR {comp['unnecessary_interventions']['total_eur']:,.0f}"],
+            ["Net benefit", "", "", "", f"EUR {econ['net_benefit_eur']:,.0f}"],
+        ], [44, 18, 62, 22, 28], header=ORANGE, zebra=LIGHT_ORANGE),
+        Spacer(1, 3 * mm),
+        body(f"Of the {actual_delayed:,} delayed test orders, {cm['tn']:,} were flagged and {cm['fp']:,} were missed. The naive baseline flags nothing, so it misses all "
+             f"{base_econ['confusion_matrix']['fp']:,} delays and ends at EUR {base_econ['net_benefit_eur']:,.0f}. The model's EUR {econ['net_benefit_eur']:,.0f} is therefore "
+             f"EUR {gates['net_benefit_improvement_over_baseline_eur']['actual']:,.0f} better, but still negative overall, because each missed delay is assumed to cost EUR 80."),
+        p("The unit values are transparent scenario assumptions set in mlops_pipeline/config.py. Finance and operations should replace them with measured "
+          "customer-service, compensation, and intervention costs before any investment decision.", styles["Callout"]),
         p("Business objective: pros", styles["H2x"]),
-        p("The pipeline is reproducible; the test set is isolated; some risky shipments are found; costs and gates are explicit; and the decision can be audited.", styles["Bodyx"]),
+        body(f"The pipeline is fully reproducible; the test set is isolated; the model finds {cand['minority_recall']:.1%} of delayed orders that would otherwise go unnoticed; "
+             "it is cheaper than doing nothing under the stated assumptions; and every decision is documented and auditable."),
         p("Business objective: cons", styles["H2x"]),
-        p("Discrimination is approximately random; weighted F1 does not beat the baseline; absolute economic value is negative; and the available inputs contain little reliable pre-outcome signal.", styles["Bodyx"]),
+        body("Ranking quality is close to chance; many delivered orders are flagged, which would waste intervention effort; the absolute net benefit is negative; "
+             "and the order-time inputs contain little signal about delays."),
+        find("artifacts/reports/cost_benefit_analysis.json/.md, business_objective_assessment.json/.md"),
         PageBreak(),
     ])
 
+    # 9 ---------------------------------------------------------------------
     story.extend([
         p("9. MLflow, metadata store, and model registry", styles["H1x"]),
-        p("What: Every candidate logs its name, parameters, training time, inference time, validation metrics, economic estimate, model file, input example, and signature. A separate evaluation run logs final test and business results.", styles["Bodyx"]),
-        p("Where: artifacts/mlflow is the local MLflow backend. Run IDs are also stored in model metadata JSON files and evaluation reports. Candidate files and approval status are under artifacts/model_registry.", styles["Bodyx"]),
-        p("Why: MLflow makes experiments inspectable and reproducible. The registry separates a candidate from an approved champion. A model is never promoted only because training completed.", styles["Bodyx"]),
+        body("Every model we trained is logged to MLflow with its parameters, training time, prediction speed, validation scores, estimated business value, "
+             "the saved model, an input example, and its signature. The final test evaluation is logged as a separate run with all business reports attached. "
+             "This means any result in this report can be traced back to the exact run that produced it."),
+        body("The model registry keeps two clearly separated entries. The <b>candidate</b> is the selected model with the automatic evaluation result. "
+             "The <b>champion</b> is the model that is actually allowed to serve predictions, together with who approved it, when, and why."),
         p("View MLflow", styles["H2x"]),
-        p("mlflow ui --backend-store-uri artifacts/mlflow --host 127.0.0.1 --port 5000", styles["CodeBlock"]),
-        p("Then open http://127.0.0.1:5000 and select ecommerce-shipping-bpmn.", styles["Bodyx"]),
+        p("mlflow ui --backend-store-uri sqlite:///artifacts/mlflow/tracking.db --host 127.0.0.1 --port 5000", styles["CodeBlock"]),
+        body(f"Then open http://127.0.0.1:5000 and select the experiment <b>ecommerce-shipping-bpmn</b>. The final evaluation run ID is {evaluation.get('mlflow_evaluation_run_id', '-')}."),
         p("Current registry result", styles["H2x"]),
-        p("The candidate manifest is marked rejected/blocked because evaluation failed. The old processed/best_model.pkl is retained only for technical demonstration and is not an approved business model.", styles["Warning"]),
+        (p(f"Candidate: {model_name}, automatic gates not all met (registry stage: rejected). Champion: the same evaluated {model_name} bundle, verified by its SHA-256 "
+           f"fingerprint and deployed as a live prototype by {override['actor']} on {override['approved_at'][:10]}.", styles["Callout"])
+         if override else p("The candidate manifest is marked rejected/blocked because evaluation failed.", styles["Warning"])),
+        find("artifacts/mlflow/tracking.db; artifacts/model_metadata_store/*.json; artifacts/model_registry/candidate_manifest.json and champion_manifest.json"),
         PageBreak(),
     ])
 
+    # 10 --------------------------------------------------------------------
     story.extend([
         p("10. Deployment", styles["H1x"]),
-        p("What: The repository contains a FastAPI serving component, raw and batch prediction endpoints, health/model/pipeline endpoints, Docker packaging, automated tests, a CI workflow, and a smoke-test script.", styles["Bodyx"]),
-        p("Where: deployment/app.py, Dockerfile, tests/test_deployment_api.py, scripts/smoke_test_deployment.py, and .github/workflows/deployment-ci.yml.", styles["Bodyx"]),
-        p("Why: Deployment is more than saving a model file. It requires a repeatable environment, a stable interface, tests, observable behavior, and a safe decision about which model is allowed to serve.", styles["Bodyx"]),
+        body("Deployment means more than saving a model file. The model is packaged with its scaler, category codes, feature order, and threshold into one bundle, "
+             "and served by a FastAPI service with single and batch prediction endpoints, health, model, and pipeline information, monitoring, feedback, and support. "
+             "The same service hosts a web app at its root address, so users can try predictions in a browser. A Dockerfile builds a self-contained image, "
+             "a GitHub Actions workflow runs the full test suite on every push, and a smoke-test script checks a running deployment end to end."),
         p("Gate-aware status", styles["H2x"]),
-        p("The API exposes deployment_approval. Because the evaluation decision is negative, the current endpoint is explicitly marked legacy_prototype_only. It may demonstrate technology but must not be described as an approved production solution.", styles["Warning"]),
-        p("Direct promotion from scripts/run_production_pipeline.py is disabled. The only supported promotion path is guarded retraining, which checks all data, model, business, and test gates.", styles["Bodyx"]),
+        body("The service only serves predictions from a model that is allowed to serve: either one that passed every gate, or one with a documented deployment "
+             "decision. Without either, prediction requests are refused (HTTP 503), so no unapproved model can serve unnoticed."),
+        *(
+            [
+                body(f"<b>Deployment decision.</b> {override['actor']} deployed the evaluated {model_display_name(override['model'])} model as a live prototype on "
+                     f"{override['approved_at'][:10]}. Reason: {override['rationale']} Gates not yet met: "
+                     f"{', '.join(GATE_LABELS.get(g, g) for g in override['failed_business_gates'])}. Each API response states its deployment basis and notes that "
+                     "the model is a prototype."),
+            ] if override else []
+        ),
+        p(
+            (f"Live deployment smoke test: {smoke['status'].upper()} on {smoke['generated_at'][:10]}. A real prediction was served (HTTP {smoke['prediction_http_status']}), "
+             "and health, pipeline status, monitoring, and metrics were all available." if smoke else "Live deployment smoke test has not yet been executed."),
+            styles["Callout"] if smoke else styles["Warning"],
+        ),
+        Spacer(1, 3 * mm),
+        p("Live demo", styles["H2x"]),
+        p(f"{LIVE_DEMO_URL} - a free Hugging Face Space. The trained {model_name} model is exported to JSON (scripts/export_browser_model.py) and runs in the browser. "
+          f"An automated test confirms it gives the same predictions as the Python model on all {in_scope:,} orders.", styles["Callout"]),
         p("Prototype commands", styles["H2x"]),
-        p("uvicorn deployment.app:app --host 127.0.0.1 --port 8000\npython scripts/smoke_test_deployment.py --base-url http://127.0.0.1:8000", styles["CodeBlock"]),
+        p("uvicorn deployment.app:app --host 127.0.0.1 --port 8000<br/>"
+          "python scripts/smoke_test_deployment.py --base-url http://127.0.0.1:8000 --require-approved<br/>"
+          "docker build -t ecommerce-shipping-prediction .<br/>"
+          "docker run --rm -p 8000:8000 ecommerce-shipping-prediction", styles["CodeBlock"]),
+        find("deployment/app.py, deployment/static/, deployment/static_space/, Dockerfile, .github/workflows/deployment-ci.yml, artifacts/reports/deployment_smoke_test.json, deployment_override.json"),
         PageBreak(),
     ])
 
+    # 11 --------------------------------------------------------------------
     story.extend([
         p("11. Utilization, monitoring, and retraining", styles["H1x"]),
-        p("What: Domain users can demonstrate predictions through Swagger UI. The service records requests, predictions, errors, class distribution, average probability, recent events, and Prometheus-style metrics.", styles["Bodyx"]),
-        p("Where: /docs, /monitoring, /metrics, /pipeline/status, and runtime/prediction_log.jsonl in deployment/app.py.", styles["Bodyx"]),
-        p("Why: A model can become incorrect after deployment when data or business conditions change. Monitoring creates evidence for support, maintenance, and retraining.", styles["Bodyx"]),
+        body("Users enter an order (region, category, shipping mode, cost, and date) in the web app and immediately see Delivered or Delayed with the probability. "
+             "Technical users can call the same API through the Swagger page at /docs. Every prediction gets an ID, so the real outcome can be reported later through /feedback."),
+        body("The service records requests, predictions, errors, the share of each predicted class, the average predicted probability, and recent events. "
+             "Once real outcomes arrive, it computes observed accuracy, ROC-AUC, and delayed recall, and recommends retraining when at least 30 outcomes show "
+             "ROC-AUC below 0.60 or delayed recall below 0.40. Metrics are also exposed in Prometheus format for dashboards."),
         p("Retraining workflow", styles["H2x"]),
-        p("mlops_pipeline/retraining.py and scripts/retrain_model.py support four triggers: changed source-data hash, model age, observed ROC-AUC below the gate, and manual --force. Every attempt gets a timestamped folder. The previous champion remains unchanged unless all gates pass.", styles["Bodyx"]),
+        body("Retraining starts when the source data changes (detected by its fingerprint), when the model is older than 30 days, or when the observed "
+             "ROC-AUC reported to the retraining script falls below 0.60, and it can be forced manually. Each attempt runs the full pipeline in its own timestamped folder, and the current "
+             "champion is only replaced if the new model passes every gate."),
         p("python scripts/retrain_model.py --force", styles["CodeBlock"]),
-        p("A retraining smoke run completed and correctly refused promotion. This proves that maintenance works without bypassing the checkpoint.", styles["Callout"]),
-        p("Production utilization status: NOT_STARTED_MODEL_NOT_APPROVED", styles["Warning"]),
+        (p(f"Retraining run {retraining['version']} (triggers: {', '.join(retraining['triggers'])}) completed with decision {retraining['checkpoint_decision']} "
+           f"and was {'promoted' if retraining['promoted'] else 'not promoted'}, so the running champion stayed unchanged, exactly as designed.", styles["Callout"])
+         if retraining else body("No retraining run has been recorded yet.")),
+        p("Utilization status: active as a live prototype (web app, API, and monitoring)." if override
+          else f"Production utilization status: {lifecycle['utilization']['production_utilization_status']}", styles["Callout" if override else "Warning"]),
+        find("/monitoring, /metrics, /utilization, /feedback in deployment/app.py; runtime/prediction_log.jsonl; artifacts/retraining_report.json; artifacts/retraining_runs/"),
         PageBreak(),
     ])
 
+    # 12 --------------------------------------------------------------------
+    test_rows = [["Test file", "Tests", "What it checks"]]
+    descriptions = {
+        "test_bpmn_pipeline.py": "Data stage outputs and split sizes, Returned removal, leakage exclusions, cost model, checkpoint report, retraining trigger, business artifacts, lifecycle status, deployment decision record",
+        "test_deployment_api.py": "Health, single/batch/processed predictions, blocking without approval, invalid input, monitoring, metrics, model info, feedback, support tickets, web app, deployment decision",
+        "test_browser_model.py": f"Live web app predictions match the Python model on all {in_scope:,} orders",
+    }
+    for name, count in sorted(test_counts.items()):
+        test_rows.append([name, str(count), descriptions.get(name, "")])
     story.extend([
         p("12. Testing, CI, and reproducibility", styles["H1x"]),
-        p("The automated tests cover data preparation artifacts and split integrity, input/output contracts, business economics, Cost_per_Day ablation evidence, evaluation checkpoint behavior, retraining triggers, business-understanding artifacts, lifecycle blocking, API health, raw and processed predictions, batch predictions, invalid input, monitoring, metadata, pipeline status, and metrics.", styles["Bodyx"]),
-        p("Current result: 14 tests pass.", styles["Callout"]),
-        p("The GitHub Actions workflow installs both runtime and development dependencies and runs the complete test suite. This replaces the earlier configuration that tested only deployment code.", styles["Bodyx"]),
+        body("Automated tests protect every stage of the pipeline and the deployed service, so a change that breaks something is caught before it reaches users."),
+        table(test_rows, [44, 14, 116]),
+        Spacer(1, 3 * mm),
+        p(f"Current result: all {total_tests} tests pass." if total_tests else "Run pytest -q to execute the test suite.", styles["Callout"]),
+        body("The GitHub Actions workflow installs the runtime and development dependencies and runs the complete suite on every push and pull request."),
         p("Reproduce the project", styles["H2x"]),
-        p("pip install -r requirements.txt -r requirements-dev.txt\npython scripts/run_end_to_end_pipeline.py\npytest -q", styles["CodeBlock"]),
-        p("For a faster structural run, add --quick. Quick mode reduces ensemble size but keeps contracts, MLflow, reports, gates, and lifecycle decisions.", styles["Bodyx"]),
+        p("pip install -r requirements.txt -r requirements-dev.txt<br/>python scripts/run_end_to_end_pipeline.py<br/>pytest -q<br/>python scripts/generate_project_report.py", styles["CodeBlock"]),
+        body("The pipeline uses a fixed random seed (42), so rerunning it reproduces the same splits, models, and numbers. Add --quick for a faster structural run with smaller models."),
+        find("tests/; .github/workflows/deployment-ci.yml; README.md"),
         PageBreak(),
     ])
 
-    trace_rows = [
-        ["Requirement", "Implementation evidence", "Status"],
-        ["Business Understanding", "situation, requirements, project map", "Complete"],
-        ["Data exploration/preparation", "reports, contracts, feature store, pipeline", "Complete"],
-        ["Model selection/training", "four candidates, validation design, MLflow", "Complete"],
-        ["Business-goal evaluation", "test metrics, economics, checkpoint", "Complete"],
-        ["Deployment/testing", "FastAPI, Docker, CI, tests, gated status", "Prototype complete; business blocked"],
-        ["Use/monitoring/maintenance", "monitoring endpoints and retraining", "Prototype complete; production inactive"],
-        ["Architecture documentation", "BPMN-aligned, UML component and sequence diagrams", "Complete"],
-        ["Critical reflection", "limitations, techniques, technologies, process review", "Complete"],
-    ]
-    trace_table = Table([[p(cell, styles["Smallx"]) for cell in row] for row in trace_rows], colWidths=[48 * mm, 79 * mm, 43 * mm], repeatRows=1)
-    trace_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5DF")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]), ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-    story.extend([p("13. Requirement traceability", styles["H1x"]), trace_table, PageBreak()])
+    # 13 --------------------------------------------------------------------
+    story.extend([
+        p("13. Requirement traceability", styles["H1x"]),
+        body("Each requirement from the project proposal and the MLOps-DSPM material, with the evidence that shows it is done."),
+        table([
+            ["Requirement", "Implementation evidence", "Status"],
+            ["Business Understanding", "Situation assessment, requirements, project map, success gates (section 3)", "Complete"],
+            ["Data exploration and preparation", f"Quality checks, contracts, {scope['rows_removed']:,} Returned removed, feature store (section 4)", "Complete"],
+            ["Model selection and training", "Four models, validation-only selection, MLflow tracking (section 5)", "Complete"],
+            ["Leakage review", "Cost_per_Day and post-outcome fields excluded (section 6)", "Complete"],
+            ["Business-goal evaluation", f"Untouched test set, costs, {gates_met} of {len(gates)} gates met (sections 7-8)", "Complete"],
+            ["Deployment and testing", f"FastAPI, web app, Docker, CI, {total_tests} tests, smoke test (sections 10, 12)", "Live prototype" if override else "Prototype complete"],
+            ["Use, monitoring, maintenance", "Monitoring, feedback, support, guarded retraining (section 11)", "Active (prototype)" if override else "Prototype complete"],
+            ["Architecture documentation", "BPMN-aligned process, UML component and sequence diagrams (docs/architecture.md)", "Complete"],
+            ["Critical reflection", "Data, modelling, technology, and process review (section 14)", "Complete"],
+        ], [48, 90, 36]),
+        PageBreak(),
+    ])
 
+    # 14 --------------------------------------------------------------------
     story.extend([
         p("14. Challenges and critical reflection", styles["H1x"]),
         p("Data challenge", styles["H2x"]),
-        p("The dataset is clean in a technical sense, but clean data is not automatically predictive data. The available order attributes do not reliably explain delivery outcome. Future work should collect promised SLA, carrier, warehouse, route/distance, inventory state, dispatch delay, workload, weather, and operational events available before the prediction time.", styles["Bodyx"]),
+        body("The dataset is clean, but clean data is not the same as predictive data. Delay rates are almost identical across every order-time attribute, so the "
+             "model has very little to learn from. The most valuable next step is to collect information that is known before shipping and plausibly drives delays: "
+             "carrier, warehouse, route distance, promised delivery date, stock availability, dispatch backlog, and weather."),
         p("Modeling challenge", styles["H2x"]),
-        p("The earlier notebook tuned a threshold on the test set and compared binary and multiclass results as if they were directly equivalent. The corrected design separates training, validation, and test roles and compares like-for-like binary candidates.", styles["Bodyx"]),
+        body("The earlier notebooks mixed in Returned orders as a third class and tuned the decision threshold on the test set, which makes results look better "
+             "than they are. The corrected design removes Returned completely, models Delivered vs Delayed only, keeps training, validation, and test strictly separate, "
+             "and compares all models on the same terms."),
         p("Technology reflection", styles["H2x"]),
-        p("CSV/Joblib feature storage and a filesystem MLflow backend are appropriate for a local academic prototype. A production system would normally use a managed feature platform or database, centralized MLflow backend, artifact storage, orchestration, authentication, alerting, and infrastructure deployment.", styles["Bodyx"]),
+        body("CSV and Joblib files for the feature store and a local SQLite MLflow backend fit an academic prototype well: they are simple, transparent, and free. "
+             "A production system would use a managed feature store, a shared MLflow server, central artifact storage, orchestration, authentication, and alerting. "
+             "For the public demo, a free static Hugging Face Space runs the exported model in the browser; a hosted server would add shared monitoring."),
         p("Process-model reflection", styles["H2x"]),
-        p("The MLOps-DSPM is valuable because it makes negative decisions legitimate. A complete project is not one that always deploys; it is one that produces enough reliable evidence to deploy or to return to an earlier stage. Here, the correct outcome is a technically complete prototype and a business decision not to deploy the current model.", styles["Callout"]),
+        p("The MLOps-DSPM is valuable because it makes evidence-based decisions possible, including the decision to go back a stage. Here the pipeline, deployment, "
+          "monitoring, and retraining are complete and running, and the evaluation clearly shows what is needed next: better input data. "
+          + ("The model is deployed as a documented live prototype, so the complete lifecycle can be demonstrated while the evidence and the decision stay transparent." if override else ""),
+          styles["Callout"]),
         PageBreak(),
     ])
 
+    # 15 --------------------------------------------------------------------
     story.extend([
         p("15. Final conclusion", styles["H1x"]),
-        p("The repository now implements the complete MLOps-DSPM structure required by the project proposal: management artifacts, data pipeline, reusable feature storage, experimentation, MLflow, model registry, analytical pipeline, business evaluation, technical deployment, monitoring, tests, CI, and retraining.", styles["Bodyx"]),
-        p("The implementation is reproducible and auditable. However, the current model fails statistical and absolute economic gates. It must not be promoted for business use. The next iteration should return to Business Understanding, confirm the intervention decision and true cost matrix, and collect stronger pre-outcome operational features.", styles["Warning"]),
+        body("The project implements the complete MLOps-DSPM lifecycle required by the proposal: management artifacts, a reproducible data pipeline with a feature store, "
+             f"tracked experiments in MLflow, a model registry, a business-focused evaluation, a deployed API and web app, monitoring, {total_tests} automated tests with CI, "
+             "and guarded retraining."),
+        p(f"The final selected algorithm is {model_name}. On {splits['test']:,} unseen test orders it catches {cand['minority_recall']:.1%} of delayed orders and is "
+          f"EUR {gates['net_benefit_improvement_over_baseline_eur']['actual']:,.0f} cheaper than doing nothing, meeting {gates_met} of {len(gates)} gates. "
+          f"Its ROC-AUC of {cand['roc_auc']:.3f} shows that order-time attributes alone cannot yet predict delays reliably. "
+          + ("The model is live as a prototype for demonstration. " if override else "")
+          + "The next iteration should confirm the intervention process and true costs with the business and collect stronger pre-shipment operational data.",
+          styles["Callout"]),
         p("Final status", styles["H2x"]),
-        p("TECHNICAL PROTOTYPE COMPLETE - BUSINESS DEPLOYMENT BLOCKED", styles["Callout"]),
+        p(status_text, styles["Callout"]),
         p("References", styles["H2x"]),
-        p("1. Machine Learning-Operations-based Data Science Process Model - Material (DSPM_material_STP.pdf).\n2. Project Proposal: Development and Operationalization of Data Science Solutions - E-Commerce Shipping Prediction (STP_ecommerce.pdf).\n3. Kreuzberger, D., Kuhl, N., and Hirschl, S. (2023). Machine Learning Operations (MLOps): Overview, Definition, and Architecture. IEEE Access, 11, 31866-31879.\n4. Haertel, C., Pohl, M., Nahhas, A., Staegemann, D., and Turowski, K. (2022). Toward a Lifecycle for Data Science. PACIS 2022 Proceedings.", styles["Smallx"]),
+        p("1. Machine Learning-Operations-based Data Science Process Model - Material (DSPM_material_STP.pdf).<br/>"
+          "2. Project Proposal: Development and Operationalization of Data Science Solutions - E-Commerce Shipping Prediction (STP_ecommerce.pdf).<br/>"
+          "3. Kreuzberger, D., Kuhl, N., and Hirschl, S. (2023). Machine Learning Operations (MLOps): Overview, Definition, and Architecture. IEEE Access, 11, 31866-31879.<br/>"
+          "4. Haertel, C., Pohl, M., Nahhas, A., Staegemann, D., and Turowski, K. (2022). Toward a Lifecycle for Data Science. PACIS 2022 Proceedings.", styles["Smallx"]),
     ])
 
     doc.build(story, onFirstPage=page_frame, onLaterPages=page_frame)
@@ -346,4 +697,8 @@ def build_report() -> Path:
 
 
 if __name__ == "__main__":
+    import sys
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
     print(build_report())

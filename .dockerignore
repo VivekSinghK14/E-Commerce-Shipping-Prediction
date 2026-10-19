@@ -6,3 +6,7 @@ __pycache__
 50K Records.csv
 evalaution
 modelling.ipynb
+artifacts/mlflow
+artifacts/retraining_runs
+runtime
+tmp

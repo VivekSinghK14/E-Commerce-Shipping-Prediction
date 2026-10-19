@@ -6,11 +6,11 @@
     "Minority recall and economic value depend heavily on threshold and assumed costs.",
     "Current fields contain little pre-outcome signal; deployment could create cost without benefit."
   ],
-  "generated_at": "2026-08-18T22:37:48.393782+00:00",
-  "objective": "Identify delayed/returned shipments early enough for useful intervention.",
+  "generated_at": "2026-10-15T15:46:51.288833+00:00",
+  "objective": "Identify delayed shipments early enough for useful intervention.",
   "pros": [
     "The pipeline is reproducible and the test set is isolated from selection.",
-    "The chosen threshold identifies some at-risk shipments.",
+    "The chosen threshold identifies some delayed shipments.",
     "All business assumptions and failed gates are explicit and auditable."
   ],
   "recommendation": "Revisit target, available predictors, and business framing; do not deploy"

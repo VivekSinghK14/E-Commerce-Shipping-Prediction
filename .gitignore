@@ -14,3 +14,6 @@ artifacts/mlflow/
 artifacts/retraining_runs/
 artifacts/retraining_state.json
 artifacts/retraining_report.json
+
+# Default MLflow file store (unused; tracking lives in artifacts/mlflow)
+mlruns/

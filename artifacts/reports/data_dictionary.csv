@@ -1,11 +1,11 @@
 column,dtype,non_null,unique_values,description
-Order_ID,object,50000,50000,Unique order identifier; excluded from model features.
-Customer_Region,object,50000,5,Customer region (categorical predictor).
-Product_Category,object,50000,6,Ordered product category (categorical predictor).
-Order_Date,object,50000,1461,Date order was placed; source for calendar features.
-Ship_Date,object,50000,1466,Date order shipped; used only for quality validation.
-Delivery_Date,object,50000,1473,Date delivered; used only for quality validation.
-Shipping_Mode,object,50000,3,Selected shipping mode (categorical predictor).
-Shipping_Cost,int64,50000,350,Shipping charge (numeric predictor).
-Delivery_Status,object,50000,3,"Outcome: Delivered, Delayed, or Returned."
-Delivery_Days,int64,50000,9,Days from shipping to delivery (numeric predictor).
+Order_ID,object,47567,47567,Unique order identifier; excluded from model features.
+Customer_Region,object,47567,5,Customer region (categorical predictor).
+Product_Category,object,47567,6,Ordered product category (categorical predictor).
+Order_Date,object,47567,1461,Date order was placed; source for calendar features.
+Ship_Date,object,47567,1466,Date order shipped; used only for quality validation.
+Delivery_Date,object,47567,1473,Date delivered; used only for quality validation.
+Shipping_Mode,object,47567,3,Selected shipping mode (categorical predictor).
+Shipping_Cost,int64,47567,350,Shipping charge (numeric predictor).
+Delivery_Status,object,47567,2,Target outcome: Delivered (1) or Delayed (0).
+Delivery_Days,int64,47567,9,"Post-outcome duration from shipping to delivery; quality check only, never a predictor."

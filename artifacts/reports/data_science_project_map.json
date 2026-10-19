@@ -1,13 +1,82 @@
 {
-  "generated_at": "2026-08-18T22:37:05.139649+00:00",
+  "checkpoint_policy": "Automated thresholds recommend continuation; a named business owner must review before operational use.",
+  "generated_at": "2026-10-15T15:32:06.500454+00:00",
   "primary_risk": "The provided fields may not contain enough pre-outcome predictive signal.",
   "project": "E-Commerce Shipping Prediction",
+  "project_plan": [
+    {
+      "deliverable": "requirements, situation assessment and project map",
+      "exit_checkpoint": "CONTINUE_TO_DATA_COLLECTION",
+      "stage": "Business Understanding"
+    },
+    {
+      "deliverable": "validated dataset and versioned feature artifacts",
+      "exit_checkpoint": "DATA_QUALITY_PASSED",
+      "stage": "Data Collection, Exploration, and Preparation"
+    },
+    {
+      "deliverable": "reproducible candidate experiments and registered bundle",
+      "exit_checkpoint": "MODEL_SIGNAL_SUFFICIENT",
+      "stage": "Analysis"
+    },
+    {
+      "deliverable": "untouched-test assessment and business decision",
+      "exit_checkpoint": "PROCEED_TO_DEPLOYMENT or RETURN_TO_BUSINESS_UNDERSTANDING",
+      "stage": "Evaluation"
+    },
+    {
+      "deliverable": "approved pipeline and serving release",
+      "exit_checkpoint": "DEPLOYMENT_SMOKE_TEST_PASSED",
+      "stage": "Deployment"
+    },
+    {
+      "deliverable": "user feedback, support and observed value",
+      "exit_checkpoint": "CONTINUE, RETRAIN, or DISCONTINUE",
+      "stage": "Utilization"
+    }
+  ],
   "roles": {
-    "analytical_modeling": "hypotheses, experiments, models and analytical pipeline",
-    "data_infrastructure_and_operations": "CI/CD, serving, monitoring and retraining",
-    "data_management_and_analysis": "requirements, data acquisition, quality and pipeline",
-    "domain_expertise": "interpretation and business validation",
-    "strategy_and_project_management": "business goals, checkpoint and continuation decisions"
+    "analytical_modeling": {
+      "owner": "unassigned",
+      "responsibility": "hypotheses, experiments, model registry and analytical pipeline",
+      "stages": [
+        "Analysis",
+        "Evaluation"
+      ]
+    },
+    "data_infrastructure_and_operations": {
+      "owner": "unassigned",
+      "responsibility": "CI/CD, serving, monitoring, support and retraining",
+      "stages": [
+        "Deployment",
+        "Utilization"
+      ]
+    },
+    "data_management_and_analysis": {
+      "owner": "unassigned",
+      "responsibility": "data requirements, acquisition, quality and feature pipeline",
+      "stages": [
+        "Data Collection, Exploration, and Preparation"
+      ]
+    },
+    "domain_expertise": {
+      "owner": "unassigned",
+      "responsibility": "target interpretation, outcome feedback and business validation",
+      "stages": [
+        "Business Understanding",
+        "Evaluation",
+        "Utilization"
+      ]
+    },
+    "strategy_and_project_management": {
+      "owner": "unassigned",
+      "responsibility": "business goals, checkpoint and continuation decisions",
+      "stages": [
+        "Business Understanding",
+        "Evaluation",
+        "Utilization"
+      ]
+    }
   },
   "scope": "End-to-end prototype following the MLOps-based Data Science Process Model",
   "stages": [

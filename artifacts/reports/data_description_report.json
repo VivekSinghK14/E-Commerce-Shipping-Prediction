@@ -12,9 +12,22 @@
     "Delivery_Days"
   ],
   "columns": 10,
-  "generated_at": "2026-08-18T22:37:05.210462+00:00",
-  "memory_bytes": 23591984,
-  "rows": 50000,
-  "source": "C:\\Users\\Vivek Kumar Singh\\Downloads\\mlops-main\\mlops-main\\50K Records.csv",
+  "generated_at": "2026-10-15T15:32:06.884106+00:00",
+  "memory_bytes": 22445655,
+  "rows": 47567,
+  "scope_filter": {
+    "kept_outcomes": [
+      "Delivered",
+      "Delayed"
+    ],
+    "reason": "Returned orders are outside the project scope; the model predicts Delivered vs Delayed only.",
+    "removed_outcomes": {
+      "Returned": 2433
+    },
+    "rows_in_scope": 47567,
+    "rows_removed": 2433,
+    "source_rows": 50000
+  },
+  "source": "C:\\Users\\Vivek Kumar Singh\\Downloads\\E-Commerce-Shipping-Prediction-main\\E-Commerce-Shipping-Prediction-main\\50K Records.csv",
   "source_sha256": "21b510220c0387f11d40fc229e26471d59adb145223af43518ce1442e887c7f8"
 }

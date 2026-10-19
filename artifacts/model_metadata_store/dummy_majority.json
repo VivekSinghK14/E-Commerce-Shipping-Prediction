@@ -8,8 +8,8 @@
     "assumption_warning": "Illustrative scenario values; validate unit benefits/costs with finance and operations.",
     "components": {
       "correct_on_time_predictions": {
-        "count": 8012,
-        "total_eur": 16024.0,
+        "count": 8013,
+        "total_eur": 16026.0,
         "unit_value_eur": 2.0
       },
       "correct_risk_flags": {
@@ -18,8 +18,8 @@
         "unit_value_eur": 30.0
       },
       "missed_risks": {
-        "count": 1988,
-        "total_eur": -159040.0,
+        "count": 1501,
+        "total_eur": -120080.0,
         "unit_cost_eur": 80.0
       },
       "unnecessary_interventions": {
@@ -30,15 +30,15 @@
     },
     "confusion_matrix": {
       "fn": 0,
-      "fp": 1988,
+      "fp": 1501,
       "tn": 0,
-      "tp": 8012
+      "tp": 8013
     },
     "currency": "EUR",
-    "negative_class": "Delayed or Returned / At Risk",
-    "net_benefit_eur": -143016.0,
-    "net_benefit_per_1000_predictions_eur": -14301.6,
-    "positive_class": "Delivered / On Time"
+    "negative_class": "Delayed",
+    "net_benefit_eur": -104054.0,
+    "net_benefit_per_1000_predictions_eur": -10936.935043094387,
+    "positive_class": "Delivered"
   },
   "estimator": "DummyClassifier",
   "feature_columns": [
@@ -46,30 +46,36 @@
     "Product_Category",
     "Shipping_Mode",
     "Shipping_Cost",
-    "Delivery_Days",
     "Order_Month",
-    "Order_DayOfWeek",
-    "Cost_per_Day"
+    "Order_DayOfWeek"
   ],
-  "generated_at": "2026-08-18T22:37:21.910316+00:00",
-  "inference_ms_per_1000": 0.23666000342927873,
-  "mlflow_run_id": "11981ab80f8547c2ad2ff793c00d58ec",
-  "mlflow_tracking_uri": "file:///C:/Users/Vivek%20Kumar%20Singh/Downloads/mlops-main/mlops-main/artifacts/mlflow",
+  "generated_at": "2026-10-15T15:35:38.019446+00:00",
+  "inference_ms_per_1000": 0.19574311307565065,
+  "mlflow_run_id": "95b97af77f4a4b2d8fba40fe9afe7f38",
+  "mlflow_tracking_uri": "sqlite:///C:/Users/Vivek Kumar Singh/Downloads/E-Commerce-Shipping-Prediction-main/E-Commerce-Shipping-Prediction-main/artifacts/mlflow/tracking.db",
   "name": "dummy_majority",
   "parameters": {
     "constant": null,
     "random_state": null,
     "strategy": "prior"
   },
-  "training_rows": 30000,
-  "training_seconds": 0.001101300003938377,
+  "training_rows": 28539,
+  "training_seconds": 0.0031590000726282597,
   "validation_metrics": {
-    "accuracy": 0.8012,
+    "accuracy": 0.8422324994744587,
+    "average_precision_delayed": 0.1577675005255413,
     "balanced_accuracy": 0.5,
-    "f1_weighted": 0.7127708638685321,
+    "brier_score": 0.1328769165785073,
+    "f1_macro": 0.4571803503166543,
+    "f1_weighted": 0.7701042983156088,
+    "fn": 0,
+    "fp": 1501,
+    "minority_precision": 0.0,
     "minority_recall": 0.0,
-    "precision_weighted": 0.64192144,
-    "recall_weighted": 0.8012,
-    "roc_auc": 0.5
+    "precision_weighted": 0.709355583170994,
+    "recall_weighted": 0.8422324994744587,
+    "roc_auc": 0.5,
+    "tn": 0,
+    "tp": 8013
   }
 }

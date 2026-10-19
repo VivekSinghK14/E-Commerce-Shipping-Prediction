@@ -1,29 +1,28 @@
 {
   "category_distributions": {
     "Customer_Region": {
-      "Central": 10117,
-      "East": 9785,
-      "North": 9924,
-      "South": 10073,
-      "West": 10101
+      "Central": 9616,
+      "East": 9305,
+      "North": 9464,
+      "South": 9577,
+      "West": 9605
     },
     "Delivery_Status": {
       "Delayed": 7505,
-      "Delivered": 40062,
-      "Returned": 2433
+      "Delivered": 40062
     },
     "Product_Category": {
-      "Beauty": 8331,
-      "Electronics": 8376,
-      "Fashion": 8345,
-      "Grocery": 8270,
-      "Home": 8298,
-      "Sports": 8380
+      "Beauty": 7933,
+      "Electronics": 7976,
+      "Fashion": 7972,
+      "Grocery": 7823,
+      "Home": 7871,
+      "Sports": 7992
     },
     "Shipping_Mode": {
-      "Express": 15065,
-      "Same Day": 4962,
-      "Standard": 29973
+      "Express": 14344,
+      "Same Day": 4730,
+      "Standard": 28493
     }
   },
   "date_ranges": {
@@ -40,27 +39,27 @@
       "min": "2022-01-01T00:00:00"
     }
   },
-  "generated_at": "2026-08-18T22:37:05.481553+00:00",
+  "generated_at": "2026-10-15T15:32:08.368706+00:00",
   "numeric_summary": {
     "Delivery_Days": {
       "25%": 4.0,
       "50%": 6.0,
       "75%": 8.0,
-      "count": 50000.0,
+      "count": 47567.0,
       "max": 10.0,
-      "mean": 5.98976,
+      "mean": 5.9900981773077975,
       "min": 2.0,
-      "std": 2.5736486970354955
+      "std": 2.576550887834474
     },
     "Shipping_Cost": {
       "25%": 88.0,
       "50%": 121.0,
       "75%": 164.0,
-      "count": 50000.0,
+      "count": 47567.0,
       "max": 399.0,
-      "mean": 138.83828,
+      "mean": 138.86774444467804,
       "min": 50.0,
-      "std": 72.49868914566854
+      "std": 72.5261503729377
     }
   }
 }

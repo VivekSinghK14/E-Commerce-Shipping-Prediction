@@ -1,13 +1,15 @@
 {
   "allowed_outcomes": [
     "Delivered",
-    "Delayed",
+    "Delayed"
+  ],
+  "business_question": "Can order-time attributes identify shipments at risk of being delayed?",
+  "excluded_outcomes": [
     "Returned"
   ],
-  "business_question": "Can order-time attributes identify shipments at risk of not being delivered?",
-  "generated_at": "2026-08-18T22:37:05.208730+00:00",
+  "generated_at": "2026-10-15T15:32:06.871822+00:00",
   "minimum_rows": 1000,
-  "prediction_target": "Delivered (1) versus Delayed/Returned (0)",
+  "prediction_target": "Delivered (1) versus Delayed (0)",
   "required_columns": [
     "Order_ID",
     "Customer_Region",

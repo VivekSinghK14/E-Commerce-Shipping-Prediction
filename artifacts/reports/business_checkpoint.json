@@ -1,0 +1,8 @@
+{
+  "decision": "CONTINUE_TO_DATA_COLLECTION",
+  "decision_role": "strategy_and_project_management",
+  "generated_at": "2026-10-15T15:32:06.511704+00:00",
+  "human_review_required": true,
+  "owner": "unassigned",
+  "rationale": "The use case is suitable for a gated technical prototype; production remains conditional on measured predictive and economic value."
+}
