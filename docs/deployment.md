@@ -41,37 +41,29 @@ The deployment work follows the two assignment documents:
 - `STP_ecommerce.pdf`: requires preparing and executing deployment of the ML-powered system, including testing, and demonstrating use, monitoring, and maintenance for the prototype.
 - `DSPM_material_STP.pdf`: defines deployment as impact assessment, deployment plan, deployment test, monitoring and maintenance planning, and business integration through a serving component. It also states that the deployed solution should be treated as an ML production pipeline, not only a standalone model.
 
-## Previous Deployment Audit
+## Live Demo (Hugging Face Space)
 
-The previous deployment version contained:
+**URL:** https://huggingface.co/spaces/VivekSinghK14/shipping-delay-predictor
 
-- FastAPI serving component in `deployment/app.py`
-- Dockerfile for container execution
-- README commands for local execution and Docker
-- Prediction endpoints for raw and already processed inputs
+The live demo is a free static Hugging Face Space built from
+`deployment/static_space/`. `scripts/export_browser_model.py` exports the
+deployed XGBoost champion's trees and threshold to `model.json`, and
+`predictor.js` evaluates them in the browser, so no server is needed.
+`tests/test_browser_model.py` checks that the browser predictions match the
+Python model on all 47,567 in-scope orders. Republish after retraining:
 
-The previous version did not yet cover all deployment-stage expectations:
-
-- no formal impact assessment
-- no deployment test suite
-- no CI/CD workflow
-- no monitoring component
-- no utilization demonstration
-- no maintenance or retraining plan
-- no architecture/process documentation
-- no explicit mapping to feature store, model registry, model metadata store, serving component, and monitoring component
-
-The implementation now adds those missing artifacts.
+```powershell
+python scripts/export_browser_model.py
+python -c "from huggingface_hub import HfApi; HfApi().upload_folder(repo_id='VivekSinghK14/shipping-delay-predictor', repo_type='space', folder_path='deployment/static_space')"
+```
 
 ## Model and Approval Status
 
-The earlier notebook called `XGBoost binary` the deployment model. That result
-is now treated as historical because the notebook reused test data during
-threshold selection and the model did not demonstrate useful discrimination.
-The corrected pipeline selects a candidate on validation data and then applies
-an independent test/business checkpoint. The current candidate is rejected.
-XGBoost is the final selected algorithm for the academic prototype.
-It did not pass evaluation and is served only under the recorded override.
+The pipeline selects a candidate on validation data and then applies an
+independent untouched-test and business checkpoint. XGBoost is the final
+selected algorithm for the academic prototype. It did not pass evaluation
+(`RETURN_TO_BUSINESS_UNDERSTANDING`) and is served only under the recorded
+override.
 
 The gated service is designed to predict:
 
@@ -113,7 +105,7 @@ Technical impact:
 
 Risks and mitigations:
 
-- Broken scaler artifact: mitigated by embedded scaler parameters and documented limitation.
+- Scaler/model mismatch: mitigated by shipping the fitted scaler inside the SHA-256-checked registry bundle.
 - Model performance limitations: mitigated by monitoring prediction distribution and documenting retraining triggers.
 - Input drift: mitigated by logging aggregate predictions and defining drift checks for future maintenance.
 - Operational failure: mitigated by `/health`, `/pipeline/status`, tests, and smoke-test script.
@@ -148,6 +140,8 @@ The prototype maps the process-model components as follows:
 | ML production pipeline | `scripts/run_end_to_end_pipeline.py` and guarded `scripts/retrain_model.py` |
 | Serving component | FastAPI app in `deployment/app.py` |
 | Monitoring component | `/monitoring`, `/metrics`, prediction JSONL log |
+| Operations store | `deployment/operations_store.py` (SQLite predictions, outcome feedback, support tickets) |
+| Live demo | Hugging Face static Space from `deployment/static_space/` |
 | Deployment and support plan | this document |
 
 ## Deployment Plan
@@ -155,7 +149,7 @@ The prototype maps the process-model components as follows:
 1. Confirm evaluation and registry status.
    - Check `artifacts/reports/checkpoint_decision.json`.
    - Check `artifacts/model_registry/candidate_manifest.json`.
-   - Continue to business deployment only when both show approval.
+   - Continue to business deployment only when both show approval, or when a management override is recorded (`scripts/deploy_with_override.py`).
 
 2. Prepare environment.
    ```powershell
@@ -207,7 +201,7 @@ The prototype maps the process-model components as follows:
 
 10. Rollback plan.
    - Stop current service.
-   - Restore the previous approved champion bundle and manifest from the registry backup.
+   - Restore the previous champion bundle and manifest from Git history (`git checkout <commit> -- artifacts/model_registry`), or withdraw the service with `python scripts/manage_lifecycle.py discontinue`.
    - Rerun tests and smoke test.
    - Restart serving component or container.
 
@@ -314,14 +308,14 @@ Promotion criteria:
 | PDF deployment expectation | Implemented artifact |
 | --- | --- |
 | Prepare deployment | `deployment/app.py`, `requirements.txt`, `Dockerfile`, deployment plan |
-| Execute deployment | local Uvicorn command, Docker command, smoke-test script |
+| Execute deployment | local Uvicorn command, Docker command, smoke-test script, Hugging Face Space |
 | Include deployment testing | `tests/test_deployment_api.py`, `requirements-dev.txt`, CI workflow |
 | Serving component | FastAPI endpoints `/predict`, `/predict/batch`, `/docs` |
 | Impact assessment | Impact Assessment section in this document |
 | Deployment plan | Deployment Plan section in this document |
 | Monitoring plan | Monitoring and Utilization Plan section, `/monitoring`, `/metrics` |
 | Maintenance plan | Maintenance and Retraining Plan section |
-| Business integration | Swagger UI and REST API demonstration |
+| Business integration | Swagger UI, REST API, and Hugging Face live demo |
 | ML production pipeline, not only model | `scripts/run_production_pipeline.py`, pipeline status endpoint, and component mapping |
 | Feature store | `artifacts/feature_store/` |
 | Model registry | `artifacts/model_registry/` |
